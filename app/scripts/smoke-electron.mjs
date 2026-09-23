@@ -1,0 +1,165 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { _electron as electron } from 'playwright';
+import { parseProject } from '../src/project/model.mjs';
+import { writeRecovery } from '../src/project/storage.mjs';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const temporary = await mkdtemp(join(tmpdir(), 'mapping-electron-smoke-'));
+const screenshots = resolve(root, 'test-results');
+await mkdir(screenshots, { recursive: true });
+let application;
+try {
+  // Native X11/Xwayland by default: Electron 44 headless Ozone crashes on this host.
+  const displayArgs = process.env.MAPPING_SMOKE_HEADLESS === '1'
+    ? ['--ozone-platform=headless', '--headless'] : ['--ozone-platform=x11'];
+  application = await electron.launch({
+    args: [root, ...displayArgs, `--user-data-dir=${temporary}/profile`],
+    timeout: 30000,
+  });
+  const editor = await application.firstWindow();
+  await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setContentSize(1488,1056));
+  const errors = [];
+  editor.on('pageerror', (error) => errors.push(error.message));
+  editor.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await editor.waitForFunction(() => Boolean(window.desktop));
+  const invoke = (method, argument) => editor.evaluate(async ({method, argument}) => window.desktop[method](argument), {method, argument});
+  const initial = await invoke('getSnapshot');
+  assert.equal(initial.mode, 'black');
+  assert.equal(initial.output.armed, false);
+  assert.equal(await editor.evaluate(() => typeof window.require), 'undefined');
+  assert.equal(await editor.evaluate(() => typeof window.process), 'undefined');
+  await assert.rejects(invoke('outputAction', {type: 'source-status', status: 'running'}));
+  await assert.rejects(invoke('outputAction', {type: 'resume'}));
+  await assert.rejects(invoke('newProject', '   '));
+  await invoke('newProject', 'Smoke project');
+  assert.equal((await invoke('getSnapshot')).project.name, 'Smoke project');
+  const isEditor=await editor.locator('#placement-x').count();
+  if(isEditor){
+    await editor.evaluate(()=>document.fonts.ready);
+    assert.equal(await editor.locator('img[src*="demo-"]:visible').count(),0,'no demo imagery before import');
+    await editor.waitForFunction(()=>[...document.images].every(image=>image.complete));
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-studio-1488.png')});
+    await editor.locator('#placement-x').fill('0.12');
+    await editor.locator('#placement-x').press('Tab');
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.transform.x===0.12);
+    await invoke('undo');
+    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0);
+    await invoke('redo');
+    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0.12);
+    await editor.locator('#mode-projector').click();
+    await editor.locator('#projector-panel').waitFor({state:'visible'});
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-projector-1488.png')});
+    await editor.locator('#mode-placement').click();
+    await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1280,800));
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-studio-1280.png')});
+    assert.ok(await editor.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal page overflow');
+    await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1488,1056));
+  }
+
+  const destination = join(temporary, 'smoke.mapping.json');
+  await application.evaluate(({dialog}, filePath) => {
+    dialog.showSaveDialog = async () => ({canceled: false, filePath});
+    dialog.showOpenDialog = async () => ({canceled: false, filePaths: [filePath]});
+    dialog.showMessageBox = async () => ({response: 0});
+  }, destination);
+  await invoke('saveProject');
+  const saved = parseProject(await readFile(destination, 'utf8'));
+  assert.equal(saved.name, 'Smoke project');
+  const recovered = structuredClone(saved);
+  recovered.revision += 1;
+  recovered.name = 'Recovered project';
+  recovered.updatedAt = new Date().toISOString();
+  await writeRecovery(destination, recovered);
+  await invoke('newProject', 'Other project');
+  const opened = await invoke('openProject');
+  assert.equal(opened.recovered, true);
+  assert.equal((await invoke('getSnapshot')).project.name, 'Recovered project');
+  assert.equal((await invoke('getSnapshot')).mode, 'black');
+
+  if(isEditor){
+    const meshPath=join(temporary,'test-plane.obj');
+    const imagePath=join(temporary,'test-image.png');
+    await writeFile(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMs8AAAAASUVORK5CYII=', 'base64'));
+    await writeFile(meshPath,process.env.MAPPING_SMOKE_OBJ ? await readFile(process.env.MAPPING_SMOKE_OBJ,'utf8') : 'v -1 -1 0\nv 1 -1 0\nv 1 1 0\nv -1 1 0\nf 1 2 3\nf 1 3 4\n');
+    await application.evaluate(({dialog},paths)=>{
+      dialog.showOpenDialog=async(_window,options)=>({canceled:false,filePaths:[options.title.includes('mesh')?paths.mesh:paths.image]});
+    },{mesh:meshPath,image:imagePath});
+    await editor.locator('#import-mesh').click();
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.mesh?.name==='test-plane.obj');
+    await editor.waitForTimeout(500);
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-model-lit.png')});
+    const preview=await editor.locator('#viewport').boundingBox();
+    await editor.mouse.move(preview.x+preview.width/2,preview.y+preview.height/2);
+    await editor.mouse.down();await editor.mouse.move(preview.x+preview.width/2+110,preview.y+preview.height/2+20,{steps:10});await editor.mouse.up();
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-model-lit-orbit.png')});
+    await editor.locator('#fit-view').click();
+    await editor.locator('#import-reference').click();
+    await editor.waitForFunction(async()=>Boolean((await window.desktop.getSnapshot()).referencePreview));
+    await editor.waitForFunction(()=>document.querySelector('#reference-thumb')?.complete);
+    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0,'mesh replacement resets placement');
+    const cameraBefore=(await invoke('getSnapshot')).project.projector;
+    await invoke('editProject',{type:'placement-transform',value:{x:0.1,y:0,scale:1,rotation:0}});
+    assert.deepEqual((await invoke('getSnapshot')).project.projector,cameraBefore);
+    await editor.waitForTimeout(1000);
+    assert.equal(await editor.locator('#error-region').innerText(), '');
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-imported-obj.png')});
+    await editor.locator('[data-tool="grid"]').click();
+    const box=await editor.locator('#viewport').boundingBox();
+    const size=Math.max(100,Math.min(240,box.width-80,box.height-150));
+    const x=box.x+box.width-size-36,y=box.y+66;
+    await editor.mouse.move(x+size/2,y+size/2);
+    await editor.mouse.down();await editor.mouse.move(x+size*.52,y+size*.5);await editor.mouse.up();
+    await editor.waitForFunction(async()=>Math.abs((await window.desktop.getSnapshot()).project.placement.grid.points[12].u-.52)<.01);
+    await editor.screenshot({scale:'css',path:join(screenshots,'editor-grid-1488.png')});
+    await editor.locator('[data-tool="mask"]').click();
+    await editor.locator('#mask-mode').selectOption('exclude');
+    await editor.mouse.click(x+size*.2,y+size*.2);
+    await editor.mouse.click(x+size*.4,y+size*.2);
+    await editor.mouse.dblclick(x+size*.3,y+size*.4);
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.mask.some(p=>p.excluded));
+    await editor.locator('#clear-mask').click();
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.mask.length===0);
+    await editor.locator('[data-tool="move"]').click();
+
+  }
+
+  await invoke('outputAction', {type: 'blackout', enabled: true});
+  const displays = await invoke('listDisplays');
+  assert.ok(displays.length > 0, 'headless display available');
+  await assert.rejects(invoke('openOutput', 'missing-display'));
+  await invoke('openOutput', displays[0].id);
+  const output = application.windows().find((page) => page !== editor);
+  assert.ok(output, 'dedicated output window');
+  await output.waitForLoadState();
+  await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).output.rendererReady);
+  assert.equal((await invoke('getSnapshot')).mode, 'black');
+  assert.equal(await output.evaluate(() => typeof window.desktop), 'undefined');
+  assert.equal(await output.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(0, 0, 0)');
+  await output.screenshot({path: join(screenshots, 'electron-output-black.png')});
+  await invoke('editProject',{type:'placement-transform',value:{x:0.2,y:0,scale:1,rotation:0}});
+  await invoke('undo');
+  await invoke('redo');
+  assert.equal(output.isClosed(),false,'placement history preserves output window');
+  await output.reload();
+  await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).output.rendererReady);
+  assert.equal((await invoke('getSnapshot')).output.blackout, true);
+  assert.equal((await invoke('getSnapshot')).output.armed, false);
+  const preferences = await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().map((window) => {
+    const p = window.webContents.getLastWebPreferences();
+    return {sandbox: p.sandbox, contextIsolation: p.contextIsolation, nodeIntegration: p.nodeIntegration};
+  }));
+  assert.ok(preferences.every((p) => p.sandbox && p.contextIsolation && !p.nodeIntegration));
+  await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().endsWith('/output.html')).close());
+  await editor.waitForFunction(async () => !(await window.desktop.getSnapshot()).output.rendererReady);
+  assert.equal((await invoke('getSnapshot')).output.displayConfirmed, false);
+  await editor.screenshot({scale:'css',path: join(screenshots, isEditor?'electron-editor-final.png':'electron-harness.png')});
+  assert.deepEqual(errors, []);
+  console.log('PASS: black startup, isolated preload, IPC guards, project save/recovery, dedicated black output, reload/disarm and window preferences.');
+} finally {
+  if (application) await application.close();
+  await rm(temporary, {recursive: true, force: true});
+}

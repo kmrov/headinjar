@@ -1,0 +1,27 @@
+# Dependencies and generated output
+node_modules
+dist/
+coverage/
+test-results/
+*.log
+
+# Local configuration
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+
+# User assets and saved projects
+models/
+*.obj
+*.mtl
+*.mapping.json
+*.recovery.json
+
+# Local working notes
+tasks/
+docs/
+AGENTS.md
+.agents/
+.codex/

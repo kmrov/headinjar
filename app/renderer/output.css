@@ -1,0 +1,9 @@
+html, body { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+canvas { width: 100%; height: 100%; display: block; }
+canvas[hidden] { display: none; }
+body { cursor: none; }
+#calibration-marker { position: absolute; width: 28px; height: 28px; transform: translate(-50%, -50%); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #000; pointer-events: none; }
+#calibration-marker::before, #calibration-marker::after { content: ''; position: absolute; background: #00ffff; box-shadow: 0 0 0 1px #000; }
+#calibration-marker::before { width: 44px; height: 2px; top: 13px; left: -8px; }
+#calibration-marker::after { height: 44px; width: 2px; left: 13px; top: -8px; }
+#calibration-marker span { position: absolute; top: -24px; left: 28px; color: white; background: black; padding: 2px 4px; font: bold 18px sans-serif; }

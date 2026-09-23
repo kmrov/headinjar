@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'">
+    <title>Mapping — Projection editor</title>
+    <link rel="stylesheet" href="../dist/editor.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <span class="brand" aria-label="Mapping">MAPPING</span>
+        <div class="project-tools">
+          <label class="project-name-wrap" for="project-name">Project</label>
+          <input id="project-name" class="project-name" aria-label="Project name" readonly value="Untitled project">
+          <span id="save-state" class="save-state"><i class="ph ph-check-circle" aria-hidden="true"></i><span>Saved</span></span>
+          <div class="file-actions" aria-label="Project actions">
+            <button class="icon-button" id="undo-project" type="button" aria-label="Undo" title="Undo · Ctrl Z" disabled><i class="ph ph-arrow-u-up-left" aria-hidden="true"></i></button>
+            <button class="icon-button" id="redo-project" type="button" aria-label="Redo" title="Redo · Ctrl Shift Z" disabled><i class="ph ph-arrow-u-up-right" aria-hidden="true"></i></button>
+            <button class="icon-button" id="new-project" type="button" aria-label="New project" title="New project"><i class="ph ph-file-plus" aria-hidden="true"></i></button>
+            <button class="icon-button" id="open-project" type="button" aria-label="Open project" title="Open project"><i class="ph ph-folder-open" aria-hidden="true"></i></button>
+            <button class="icon-button" id="save-project" type="button" aria-label="Save project" title="Save project · Ctrl S"><i class="ph ph-floppy-disk" aria-hidden="true"></i></button>
+          </div>
+        </div>
+        <nav class="mode-tabs" aria-label="Editor mode">
+          <button class="mode-tab is-active" id="mode-placement" data-mode="placement" type="button" aria-pressed="true">Image placement</button>
+          <button class="mode-tab" id="mode-projector" data-mode="projector" type="button" aria-pressed="false">Projector calibration</button>
+        </nav>
+        <button class="blackout-button" id="blackout" type="button" aria-pressed="false"><i class="ph ph-moon" aria-hidden="true"></i><span>Blackout</span></button>
+        <button class="icon-button settings-button" type="button" aria-label="Settings are not available yet" title="Settings are not available yet" disabled><i class="ph ph-gear-six" aria-hidden="true"></i></button>
+      </header>
+
+      <main class="workspace">
+        <aside class="source-rail" aria-label="Project sources">
+          <section class="rail-section model-section">
+            <div class="section-heading"><h2>Model</h2><span class="section-kicker">3D</span></div>
+            <div class="asset-name-row"><span id="model-name">No model loaded</span><span id="model-state" class="asset-state">Required</span></div>
+            <div class="model-preview asset-preview">
+
+              <div class="preview-overlay"><span class="preview-caption" id="model-caption">Import an OBJ to begin</span></div>
+              <div class="loaded-model-mark" id="loaded-model-mark"><i class="ph ph-cube" aria-hidden="true"></i><span>OBJ model loaded</span></div>
+            </div>
+            <button class="button button-secondary rail-action" id="import-mesh" type="button"><i class="ph ph-cube" aria-hidden="true"></i>Import OBJ</button>
+          </section>
+
+          <section class="rail-section source-section">
+            <div class="section-heading"><h2>Source</h2><span class="section-kicker">Image</span></div>
+            <div class="asset-name-row"><span id="reference-name">Reference image</span><span id="reference-state" class="asset-state muted">None</span></div>
+            <div class="reference-preview asset-preview">
+              <img id="reference-thumb" alt="Loaded reference image" hidden>
+              <div class="empty-thumb" id="reference-empty"><i class="ph ph-image" aria-hidden="true"></i><span id="reference-empty-label">No reference image</span></div>
+
+            </div>
+            <button class="button button-secondary rail-action" id="import-reference" type="button"><i class="ph ph-image-square" aria-hidden="true"></i><span id="reference-action-label">Add reference image</span></button>
+            <p class="asset-warning" id="reference-warning" hidden></p>
+            <div class="source-health" id="source-health"><span class="health-dot" aria-hidden="true"></span><div><strong id="source-status">Live source not connected</strong><small id="source-detail">An image reference helps line up the head.</small></div></div>
+          </section>
+        </aside>
+
+        <section class="canvas-column" aria-label="Preview workspace">
+          <div class="canvas-toolbar">
+            <div class="canvas-heading"><h1 id="canvas-title">Model preview</h1><span class="scene-badge" id="canvas-badge">Placement</span></div>
+            <div class="tool-switch" role="toolbar" aria-label="Placement tools">
+              <button class="tool-button is-selected" type="button" data-tool="move" aria-pressed="true"><i class="ph ph-arrows-out-cardinal" aria-hidden="true"></i><span>Move</span></button>
+              <button class="tool-button" type="button" data-tool="grid" aria-pressed="false"><i class="ph ph-grid-four" aria-hidden="true"></i><span>Grid</span></button>
+              <button class="tool-button" type="button" data-tool="mask" aria-pressed="false"><i class="ph ph-circle-dashed" aria-hidden="true"></i><span>Mask</span></button>
+              <button class="tool-button" type="button" data-tool="align" aria-pressed="false"><i class="ph ph-crosshair" aria-hidden="true"></i><span>Align</span></button>
+            </div>
+            <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="uv">Model UV</option></select></label>
+          </div>
+          <div class="alignment-workspace">
+            <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment reference image" hidden>
+              <div class="alignment-source-heading"><strong>Reference image</strong><span>Click a landmark</span></div>
+              <div class="alignment-image-frame"><img class="alignment-image" alt="Reference image for landmark alignment" hidden><div class="alignment-empty">Add a reference image to align.</div><div class="alignment-markers" aria-label="Image landmarks"></div></div>
+              <p class="alignment-step" aria-live="polite">Click a point on the image, then the model.</p>
+            </section>
+            <div class="viewport-frame">
+              <div class="viewport-grid" aria-hidden="true"></div>
+              <div class="viewport-vignette" aria-hidden="true"></div>
+              <div id="viewport" class="viewport" role="img" aria-label="3D model and image placement preview"></div>
+              <div class="viewport-controls" aria-label="Viewport controls">
+                <button class="viewport-control" type="button" id="fit-view" aria-label="Fit model to view" title="Fit view"><i class="ph ph-corners-out" aria-hidden="true"></i></button>
+                <button class="viewport-control" type="button" id="toggle-grid" aria-label="Toggle grid visibility" aria-pressed="true" title="Show grid"><i class="ph ph-grid-four" aria-hidden="true"></i></button>
+                <button class="viewport-control" type="button" id="wireframe" aria-label="Toggle wireframe" aria-pressed="false" title="Wireframe"><i class="ph ph-triangle" aria-hidden="true"></i></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="inspector" aria-label="Inspector">
+          <div class="inspector-scroll">
+            <p id="mapping-uv-note" class="section-note mapping-uv-note" hidden>Model UV requires a texture made for this OBJ’s UV layout. For an ordinary image, choose Front and Align.</p>
+            <section class="inspector-section placement-panel" id="placement-panel">
+              <div class="inspector-title-row"><h2>Image transform</h2><span class="section-index">01</span></div>
+              <div class="field-row coordinate-row">
+                <label for="placement-x">Position <span class="field-unit">normalized</span></label>
+                <div class="coordinate-inputs"><div class="number-control"><span>X</span><input id="placement-x" type="number" min="-2" max="2" step="0.01" value="0" aria-label="Image position X, normalized"><small>norm</small></div><div class="number-control"><span>Y</span><input id="placement-y" type="number" min="-2" max="2" step="0.01" value="0" aria-label="Image position Y, normalized"><small>norm</small></div></div>
+              </div>
+              <div class="field-row"><label for="placement-scale">Scale</label><div class="number-control wide"><input id="placement-scale" type="number" min="1" max="400" step="1" value="100" aria-label="Image scale"><small>%</small></div></div>
+              <div class="field-row"><label for="placement-rotation">Rotation</label><div class="number-control rotation-control"><input id="placement-rotation" type="number" min="-180" max="180" step="0.1" value="0" aria-label="Image rotation"><small>°</small></div></div>
+              <button class="text-button reset-button" id="reset-placement" type="button"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>Reset placement</button>
+            </section>
+
+            <section class="inspector-section grid-panel" id="grid-panel">
+              <div class="inspector-title-row"><h2>Control grid</h2><span class="section-index">02</span></div>
+              <div class="grid-resolution"><i class="ph ph-grid-four" aria-hidden="true"></i><span id="grid-dimensions">Control grid</span></div>
+              <div class="selection-summary" id="grid-selection"><i class="ph ph-cursor-click" aria-hidden="true"></i><span>Select a grid point in the viewport</span></div>
+            </section>
+
+            <section class="inspector-section alignment-panel" id="alignment-panel" hidden>
+              <div class="inspector-title-row"><h2>Landmark alignment</h2><span class="alignment-count">0 / 12</span></div>
+              <p class="section-note" id="alignment-mode-note">Pair matching points on the image and model. Use at least three landmarks.</p>
+              <div class="alignment-list" aria-label="Landmark pairs"></div>
+              <div class="alignment-actions"><button class="text-button" type="button" data-alignment-remove disabled><i class="ph ph-trash" aria-hidden="true"></i>Remove selected</button><button class="text-button" type="button" data-alignment-clear disabled><i class="ph ph-broom" aria-hidden="true"></i>Clear all</button></div>
+              <div class="alignment-opacity"><label for="texture-opacity">Texture visibility</label><input id="texture-opacity" type="range" min="0" max="1" step="0.01" value="0.5"><span>Preview only</span></div>
+              <button class="button button-primary full-button" type="button" data-alignment-apply disabled><i class="ph ph-check" aria-hidden="true"></i>Apply alignment</button>
+            </section>
+
+            <section class="inspector-section mask-panel" id="mask-panel">
+              <div class="inspector-title-row"><h2>Coverage mask</h2><span class="section-index">03</span></div>
+              <div class="mask-summary"><span>Mask regions</span><strong id="mask-count">0</strong></div>
+              <div class="field-row mask-mode-row"><label for="mask-mode">New region</label><select id="mask-mode"><option value="keep">Keep visible</option><option value="exclude">Exclude from projection</option></select></div>
+              <p class="section-note" id="mask-note">Use the Mask tool to draw the area to keep visible on the surface.</p>
+              <button class="text-button reset-button" id="clear-mask" type="button" disabled><i class="ph ph-trash" aria-hidden="true"></i>Clear mask</button>
+            </section>
+
+            <section class="inspector-section projector-panel" id="projector-panel" hidden>
+              <div class="inspector-title-row"><h2>Projector</h2><span class="section-index">01</span></div>
+              <div class="field-row"><label for="projector-fov">Field of view</label><div class="number-control wide"><input id="projector-fov" type="number" min="1" max="179" step="0.1" value="45"><small>°</small></div></div>
+              <div class="field-group-label">Projector position <span>XYZ</span></div>
+              <div class="triple-inputs"><div class="number-control"><span>X</span><input id="projector-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="projector-y" type="number" step="0.01" value="0"></div><div class="number-control"><span>Z</span><input id="projector-z" type="number" step="0.01" value="3"></div></div>
+              <div class="field-group-label">Camera rotation <span>degrees</span></div>
+              <div class="triple-inputs"><div class="number-control"><span>X</span><input id="camera-rx" type="number" step="0.1" value="0"></div><div class="number-control"><span>Y</span><input id="camera-ry" type="number" step="0.1" value="0"></div><div class="number-control"><span>Z</span><input id="camera-rz" type="number" step="0.1" value="0"></div></div>
+              <div class="field-row"><label for="projector-offset-x">Image offset</label><div class="coordinate-inputs"><div class="number-control"><span>X</span><input id="projector-offset-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="projector-offset-y" type="number" step="0.01" value="0"></div></div></div>
+              <div class="inspector-title-row model-calibration-title"><h2>Model calibration</h2><span class="section-index">02</span></div>
+              <div class="field-row"><label for="model-scale">Model scale</label><div class="number-control wide"><input id="model-scale" type="number" min="0.01" step="0.01" value="1"><small>×</small></div></div>
+              <div class="field-group-label">Position <span>XYZ</span></div>
+              <div class="triple-inputs"><div class="number-control"><span>X</span><input id="model-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="model-y" type="number" step="0.01" value="0"></div><div class="number-control"><span>Z</span><input id="model-z" type="number" step="0.01" value="0"></div></div>
+              <div class="field-group-label">Rotation <span>degrees</span></div>
+              <div class="triple-inputs"><div class="number-control"><span>X</span><input id="model-rx" type="number" step="0.1" value="0"></div><div class="number-control"><span>Y</span><input id="model-ry" type="number" step="0.1" value="0"></div><div class="number-control"><span>Z</span><input id="model-rz" type="number" step="0.1" value="0"></div></div>
+              <div class="inspector-title-row output-title"><h2>Output display</h2><span class="section-index">03</span></div>
+              <div class="display-summary" id="display-summary"><i class="ph ph-monitor" aria-hidden="true"></i><span>No display selected</span></div>
+              <button class="button button-secondary full-button" id="choose-display" type="button"><i class="ph ph-monitor" aria-hidden="true"></i>Choose display</button>
+            </section>
+          </div>
+          <div class="inspector-footer">
+            <p class="cta-hint" id="cta-hint">Set up a model and source before reviewing the projector.</p>
+            <button class="button button-primary review-button" id="review-projector" type="button"><i class="ph ph-play" aria-hidden="true"></i><span>Review projector</span><i class="ph ph-arrow-up-right cta-arrow" aria-hidden="true"></i></button>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="statusbar" aria-label="Source and projector status">
+        <div class="status-source"><span class="health-dot" id="footer-health-dot" aria-hidden="true"></span><div><strong id="footer-source-label">Source disconnected</strong><small id="footer-source-detail">No live source is connected</small></div></div>
+        <span class="status-divider" aria-hidden="true"></span>
+        <div class="status-output"><span class="output-swatch" id="output-swatch"></span><div><strong id="output-status">Output black</strong><small id="output-detail">Projector not armed</small></div></div>
+        <div class="status-actions"><button class="status-action" id="hold-output" type="button" disabled title="Source must be running and output armed"><i class="ph ph-pause" aria-hidden="true"></i>Hold</button><button class="status-action" id="resume-output" type="button" disabled title="Connect a source and confirm a display first"><i class="ph ph-play" aria-hidden="true"></i>Resume</button><button class="status-action stop-action" id="stop-output" type="button" disabled><i class="ph ph-stop" aria-hidden="true"></i>Stop</button></div>
+        <div class="status-meta"><span id="resolution-status">1920 × 1080</span><span class="meta-divider"></span><span>IN&nbsp;<b id="incoming-fps">— fps</b></span><span class="meta-divider"></span><span>OUT&nbsp;<b id="presented-fps">— fps</b></span></div>
+      </footer>
+    </div>
+
+    <dialog class="display-dialog" id="display-dialog" aria-labelledby="display-dialog-title">
+      <form method="dialog" class="dialog-topline"><span class="dialog-icon"><i class="ph ph-monitor" aria-hidden="true"></i></span><button class="icon-button" value="cancel" aria-label="Close dialog"><i class="ph ph-x" aria-hidden="true"></i></button></form>
+      <h2 id="display-dialog-title">Choose output display</h2>
+      <p class="dialog-description">The output window opens black. You can explicitly resume once the source is ready.</p>
+      <div class="display-list" id="display-list" role="radiogroup" aria-label="Connected displays"></div>
+      <div class="dialog-actions"><button class="button button-secondary" id="cancel-display" type="button">Cancel</button><button class="button button-primary" id="confirm-display" type="button" disabled>Open black output</button></div>
+    </dialog>
+    <div class="toast-region" id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div class="sr-only" id="error-region" role="alert" aria-live="assertive"></div>
+    <script type="module" src="../dist/editor.js"></script>
+  </body>
+</html>
