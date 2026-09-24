@@ -113,7 +113,10 @@
           </div>
           <div class="alignment-workspace">
             <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment source image" hidden>
-              <div class="alignment-source-heading"><strong>Reference image</strong><span>Click a landmark</span></div>
+              <div class="alignment-source-heading">
+                <div class="alignment-source-title"><strong>Reference image</strong><span>Wheel zoom · middle-drag pan · click to align</span></div>
+                <button class="text-button alignment-source-fit" id="alignment-source-fit" type="button" disabled title="Fit source image" aria-label="Fit source image"><i class="ph ph-arrows-in" aria-hidden="true"></i>Fit source</button>
+              </div>
               <div class="alignment-image-frame"><img class="alignment-image" alt="Reference image for landmark alignment" hidden><canvas class="alignment-live-image" aria-label="Live or frozen WebRTC image for landmark alignment" hidden></canvas><div class="alignment-empty">Add a reference image to align.</div><div class="alignment-markers" aria-label="Image landmarks"></div></div>
               <p class="alignment-step" aria-live="polite">Click a point on the image, then the model.</p>
             </section>

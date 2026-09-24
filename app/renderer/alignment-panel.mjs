@@ -1,4 +1,4 @@
-const clamp = (value) => Math.max(0, Math.min(1, value));
+import { fittedSourceRect, sourcePointAt, zoomAtCursor } from './alignment-source-view.mjs';
 
 export function createAlignmentPanel(root, controlsRoot = document, { onSourcePoint, onSelect, onRemove, onClear } = {}) {
   const image = root.querySelector('.alignment-image');
@@ -7,6 +7,7 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
   const list = controlsRoot.querySelector('.alignment-list');
   const status = root.querySelector('.alignment-step');
   const frame = root.querySelector('.alignment-image-frame');
+  const fitSource = root.querySelector('#alignment-source-fit');
   const remove = controlsRoot.querySelector('[data-alignment-remove]');
   const clear = controlsRoot.querySelector('[data-alignment-clear]');
   let currentPairs = [];
@@ -14,10 +15,23 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
   let liveFrameSessionId = null;
   let hasLiveFrame = false;
   let lastRender = null;
+  let sourceIdentity = null;
+  let referenceDimensionKey = '';
+  let sourceView = { zoom: 1, panX: 0, panY: 0 };
+  let panGesture = null;
   const dimension = element => element === image
     ? { width: image.naturalWidth, height: image.naturalHeight }
     : { width: liveImage.width, height: liveImage.height };
   const displayedImage = () => !liveImage.hidden ? liveImage : !image.hidden ? image : null;
+  const contentBounds = () => {
+    const bounds = frame.getBoundingClientRect();
+    return {
+      left: bounds.left + frame.clientLeft,
+      top: bounds.top + frame.clientTop,
+      width: frame.clientWidth,
+      height: frame.clientHeight,
+    };
+  };
   function updateSourceVisibility(snapshot) {
     const source = snapshot?.source;
     const showLive = source?.kind === 'webrtc' && hasLiveFrame
@@ -37,45 +51,99 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
     if (!displayed) return;
     const { width: sourceWidth, height: sourceHeight } = dimension(displayed);
     if (!sourceWidth || !sourceHeight) return;
-    const width = frame.clientWidth;
-    const height = frame.clientHeight;
-    const scale = Math.min(width / sourceWidth, height / sourceHeight);
-    const drawWidth = sourceWidth * scale;
-    const drawHeight = sourceHeight * scale;
-    const offsetX = (width - drawWidth) / 2;
-    const offsetY = (height - drawHeight) / 2;
+    const rect = fittedSourceRect(frame.clientWidth, frame.clientHeight, sourceWidth, sourceHeight, sourceView);
+    if (!rect) return;
     [...markers.children].forEach((marker, index) => {
       const point = currentPairs[index]?.source ?? (index === currentPairs.length ? pendingSourcePoint : null);
       if (!point) return;
-      marker.style.left = `${((offsetX + point.u * drawWidth) / width) * 100}%`;
-      marker.style.top = `${((offsetY + point.v * drawHeight) / height) * 100}%`;
+      marker.style.left = `${rect.left + point.u * rect.width}px`;
+      marker.style.top = `${rect.top + point.v * rect.height}px`;
     });
   }
-  image.addEventListener('load', positionMarkers);
-  const resizeObserver = new ResizeObserver(positionMarkers);
+  function applySourceView() {
+    const transform = `translate(${sourceView.panX}px, ${sourceView.panY}px) scale(${sourceView.zoom})`;
+    image.style.transformOrigin = liveImage.style.transformOrigin = '0 0';
+    image.style.transform = liveImage.style.transform = transform;
+    frame.dataset.sourceZoom = String(sourceView.zoom);
+    fitSource.disabled = sourceView.zoom === 1 && sourceView.panX === 0 && sourceView.panY === 0;
+    positionMarkers();
+  }
+  function resetSourceView() {
+    endPan();
+    sourceView = { zoom: 1, panX: 0, panY: 0 };
+    applySourceView();
+  }
+  function sourcePoint(event) {
+    const displayed = displayedImage();
+    if (!displayed) return null;
+    const source = dimension(displayed);
+    return sourcePointAt(event, contentBounds(), source, sourceView);
+  }
+  function onImageLoad() {
+    const size = dimension(image);
+    if (size.width && size.height) {
+      const nextKey = `${size.width}x${size.height}`;
+      if (referenceDimensionKey && referenceDimensionKey !== nextKey && sourceIdentity?.startsWith('reference:')) resetSourceView();
+      referenceDimensionKey = nextKey;
+    }
+    applySourceView();
+  }
+  image.addEventListener('load', onImageLoad);
+  const onResize = () => applySourceView();
+  const resizeObserver = new ResizeObserver(onResize);
   resizeObserver.observe(frame);
 
-  function sourcePoint(event, target) {
-    const { width: sourceWidth, height: sourceHeight } = dimension(target);
-    if (!sourceWidth || !sourceHeight) return null;
-    const box = target.getBoundingClientRect();
-    const scale = Math.min(box.width / sourceWidth, box.height / sourceHeight);
-    const width = sourceWidth * scale;
-    const height = sourceHeight * scale;
-    const left = box.left + (box.width - width) / 2;
-    const top = box.top + (box.height - height) / 2;
-    if (event.clientX < left || event.clientX > left + width || event.clientY < top || event.clientY > top + height) return null;
-    return { u: clamp((event.clientX - left) / width), v: clamp((event.clientY - top) / height) };
+  function onWheel(event) {
+    if (!displayedImage()) return;
+    event.preventDefault();
+    const bounds = contentBounds();
+    const deltaScale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+    const requestedZoom = sourceView.zoom * Math.exp(-event.deltaY * deltaScale * 0.001);
+    sourceView = zoomAtCursor(sourceView, requestedZoom, event.clientX - bounds.left, event.clientY - bounds.top);
+    applySourceView();
   }
+  function onPointerDown(event) {
+    if (event.button !== 1 || !displayedImage()) return;
+    event.preventDefault();
+    panGesture = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: sourceView.panX, panY: sourceView.panY };
+    frame.setPointerCapture(event.pointerId);
+  }
+  function onPointerMove(event) {
+    if (!panGesture || panGesture.pointerId !== event.pointerId) return;
+    sourceView.panX = panGesture.panX + event.clientX - panGesture.clientX;
+    sourceView.panY = panGesture.panY + event.clientY - panGesture.clientY;
+    applySourceView();
+  }
+  function endPan(event) {
+    if (!panGesture || (event?.pointerId !== undefined && panGesture.pointerId !== event.pointerId)) return;
+    const pointerId = panGesture.pointerId;
+    panGesture = null;
+    if (frame.hasPointerCapture?.(pointerId)) frame.releasePointerCapture(pointerId);
+  }
+  function onAuxClick(event) { if (event.button === 1) event.preventDefault(); }
+  function onContextMenu(event) { if (panGesture) event.preventDefault(); }
+  frame.addEventListener('wheel', onWheel, { passive: false });
+  frame.addEventListener('pointerdown', onPointerDown);
+  frame.addEventListener('pointermove', onPointerMove);
+  frame.addEventListener('pointerup', endPan);
+  frame.addEventListener('pointercancel', endPan);
+  frame.addEventListener('lostpointercapture', endPan);
+  frame.addEventListener('auxclick', onAuxClick);
+  frame.addEventListener('contextmenu', onContextMenu);
+  fitSource.addEventListener('click', resetSourceView);
 
-  image.addEventListener('click', (event) => {
-    const point = sourcePoint(event, image);
+  function onReferenceClick(event) {
+    if (event.button !== 0) return;
+    const point = sourcePoint(event);
     if (point) onSourcePoint?.(point);
-  });
-  liveImage.addEventListener('click', (event) => {
-    const point = sourcePoint(event, liveImage);
+  }
+  function onLiveClick(event) {
+    if (event.button !== 0) return;
+    const point = sourcePoint(event);
     if (point) onSourcePoint?.(point);
-  });
+  }
+  image.addEventListener('click', onReferenceClick);
+  liveImage.addEventListener('click', onLiveClick);
   remove.addEventListener('click', () => onRemove?.());
   clear.addEventListener('click', () => onClear?.());
 
@@ -83,6 +151,12 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
       lastRender = { snapshot, pairs, selected, pending, pendingSource, mode };
       currentPairs = pairs;
       pendingSourcePoint = pendingSource;
+      const source = snapshot?.source;
+      const nextIdentity = source?.kind === 'webrtc'
+        ? `webrtc:${source.sessionId || ''}:${source.width || 0}x${source.height || 0}`
+        : `reference:${snapshot?.referencePreview || ''}`;
+      if (sourceIdentity !== null && sourceIdentity !== nextIdentity) resetSourceView();
+      sourceIdentity = nextIdentity;
       const preview = snapshot?.referencePreview;
       if (preview && image.src !== preview) image.src = preview;
       if (!preview) image.removeAttribute('src');
@@ -132,6 +206,7 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
       if (!source) {
         hasLiveFrame = false;
         liveFrameSessionId = null;
+        resetSourceView();
         liveImage.width = liveImage.height = 1;
         liveImage.getContext('2d')?.clearRect(0, 0, 1, 1);
         if (lastRender) updateSourceVisibility(lastRender.snapshot);
@@ -142,6 +217,7 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
       const frameWidth = width || size.width;
       const frameHeight = height || size.height;
       if (!frameWidth || !frameHeight) return;
+      if (hasLiveFrame && (liveImage.width !== frameWidth || liveImage.height !== frameHeight)) resetSourceView();
       if (liveImage.width !== frameWidth || liveImage.height !== frameHeight) {
         liveImage.width = frameWidth;
         liveImage.height = frameHeight;
@@ -150,8 +226,23 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
       hasLiveFrame = true;
       liveFrameSessionId = sessionId;
       if (lastRender) updateSourceVisibility(lastRender.snapshot);
-      positionMarkers();
+      applySourceView();
     },
-    destroy() { resizeObserver.disconnect(); },
+    destroy() {
+      resizeObserver.disconnect();
+      image.removeEventListener('load', onImageLoad);
+      image.removeEventListener('click', onReferenceClick);
+      liveImage.removeEventListener('click', onLiveClick);
+      frame.removeEventListener('wheel', onWheel);
+      frame.removeEventListener('pointerdown', onPointerDown);
+      frame.removeEventListener('pointermove', onPointerMove);
+      frame.removeEventListener('pointerup', endPan);
+      frame.removeEventListener('pointercancel', endPan);
+      frame.removeEventListener('lostpointercapture', endPan);
+      frame.removeEventListener('auxclick', onAuxClick);
+      frame.removeEventListener('contextmenu', onContextMenu);
+      fitSource.removeEventListener('click', resetSourceView);
+      endPan();
+    },
   };
 }

@@ -1,10 +1,10 @@
 <div align="center">
 
-# Head in Jar
+# Head in Jar 🫙
 
-**Shape an image around a model. Align it with the real world.**
+Fit an image to a 3D model, then line it up with the object you're projecting onto.
 
-A desktop projection mapping editor with 3D preview, landmark-based image alignment, and a dedicated projector output.
+Head in Jar is a desktop projection mapping editor. You can work with a still image or a live video feed, inspect the result in 3D, and send it to a separate display.
 
 Electron · Three.js · JavaScript
 
@@ -12,19 +12,19 @@ Electron · Three.js · JavaScript
 
 ---
 
-## What it does
+## In the editor
 
-- **Preview your model** — import an OBJ, orbit the scene, and inspect its surface with studio lighting.
-- **Place your image** — adjust position, scale, and rotation; refine a control grid; draw coverage masks.
-- **Match landmarks** — pair points on an image and a model to fit a front-facing texture.
-- **Calibrate projection** — tune the projector camera and model pose, then align projected landmarks with a physical object.
-- **Receive a live source** — accept one WebRTC video stream with optional audio through the built-in sender page or a WHIP client.
-- **Control a separate display** — use Resume, Hold, Blackout, and Stop during setup and projection.
-- **Keep your work** — save projects, recover interrupted sessions, and undo or redo edits.
+- Import an OBJ, orbit around it, and check the surface in the studio-lit 3D preview.
+- Move, scale, and rotate an image. Use the grid and masks when the simple fit needs help.
+- Pair landmarks on the image and model to fit a front-facing texture.
+- Tune the projector camera and model pose, then align projected points with a physical object.
+- Bring in one WebRTC video stream, with optional audio, from the built-in sender page or a WHIP client.
+- Control the second display with **Resume**, **Hold**, **Blackout**, and **Stop**.
+- Save your project, recover an interrupted session, and undo or redo edits.
 
-**Status:** early development. Static images and one live WebRTC source are available. Packaged installers are not yet included. Linux with X11/XWayland is the exercised desktop setup; other platforms are not yet verified.
+This is still early software. You can use static images or one live WebRTC source, but there are no packaged installers yet. The desktop setup tested so far is Linux with X11/XWayland. Other platforms have not been verified.
 
-## Get started
+## Get started 🚀
 
 Requires **Node.js 22 or newer**, npm, and a desktop session with WebGL support. Connect a projector or second monitor for dedicated output.
 
@@ -35,9 +35,9 @@ npm ci
 npm start
 ```
 
-The start command builds the renderer before opening the editor. Bring your own OBJ mesh and reference image; no models or image datasets are bundled.
+`npm start` builds the renderer and opens the editor. Bring an OBJ mesh and a reference image of your own; the repository does not bundle either.
 
-## Your first projection
+## Your first projection 🎯
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
 2. **Place the texture.** Use Front mapping for a front-facing image. Adjust Image transform, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture.
@@ -46,6 +46,8 @@ The start command builds the renderer before opening the editor. Bring your own 
 5. **Match the physical object.** Open Projector and adjust image offset, model scale and rotation, and camera perspective.
 6. **Save the project.** Keep the reference image accessible at its original path.
 
+For precise landmark placement in **Front → Align**, zoom the source image and model independently with the mouse wheel at the cursor. Middle-drag to pan either view. **Fit source** resets the image; **Fit view** resets the model. These view changes do not alter the saved texture placement or projector calibration.
+
 ### Texture mapping modes
 
 | Mode | Use it for |
@@ -53,7 +55,7 @@ The start command builds the renderer before opening the editor. Bring your own 
 | **Front** | A front-facing image fitted with transforms, a control grid, masks, and landmarks. Hidden and rear-facing surfaces do not receive the image. |
 | **Model UV** | A texture atlas authored for the OBJ's original UV coordinates. Front placement controls do not apply in this mode. |
 
-A frontal photograph does not contain the sides or back of an object. An OBJ having UV coordinates does not make an arbitrary photograph a matching texture atlas.
+A front photo cannot show the sides or back of an object. And if an OBJ has UV coordinates, a random photo still will not match its texture atlas.
 
 ### Physical landmark alignment
 
@@ -69,7 +71,7 @@ Texture alignment fits the image to the digital model. Physical alignment correc
 
 This is operator-guided 2D frame correction. It does not detect the object or automatically solve its 3D pose.
 
-### Live WebRTC input
+### Live WebRTC input 📡
 
 Under **Source**, choose **WebRTC receiver** and **Start connection server**. The server listens on `127.0.0.1:19840` and stays off until started. You can connect and inspect live video in the editor before opening an output display or importing a mesh. After importing a mesh, the same live frame appears on the model and in **Front → Align**. **Freeze preview** holds the editor and alignment view while the stream keeps running; it does not freeze the projector. The server provides two connection methods:
 
@@ -95,7 +97,7 @@ On Linux, the launcher selects X11/XWayland so the output window can be position
 
 Projects are saved as JSON with mesh geometry, placement, landmarks, and projector settings. Reference images remain external files addressed by path; keep them alongside your own working assets and update the reference if you move them. Recovery files support restoring newer interrupted work.
 
-## Development
+## Development 🛠️
 
 Run these commands from `app/`:
 
