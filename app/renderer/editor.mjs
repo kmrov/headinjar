@@ -767,7 +767,7 @@ physicalCalibration = createPhysicalCalibration(ui.projectorPanel, {
   getLandmarks: () => viewportApi?.getPhysicalLandmarks() ?? [],
   onError: reportError,
 });
-webrtcPanel = createWebRTCPanel($('#webrtc-panel'), {
+webrtcPanel = createWebRTCPanel($('.source-section'), {
   desktop,
   run: action => safely(async () => {
     const result = await action();
