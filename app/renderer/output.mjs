@@ -1,12 +1,13 @@
 import { createScenePreview } from './scene-preview.mjs';
-import { createWebRTCReceiver } from './webrtc-receiver.mjs';
+import { createFrameConsumer } from './media-frame-channel.mjs';
 
 const canvas = document.querySelector('#projection');
 const markerElement = document.querySelector('#calibration-marker');
-const videoElement = document.querySelector('#webrtc-video');
 let currentMode = 'black', marker = null, failed = false, sourceKind = 'reference';
-let currentSnapshot = null, revision = null, activeSessionId = null, receiverStatus = 'disconnected';
+let currentSnapshot = null, revision = null, activeSessionId = null;
 let localLatch = false, sawBlackAfterLatch = false, lastVideoSize = null, hasCopiedVideoFrame = false;
+let scene, frameConsumer, channelName = null;
+
 function showMarker() {
   markerElement.hidden = failed || currentMode !== 'live' || localLatch
     || (sourceKind === 'webrtc' && !hasCopiedVideoFrame) || !marker;
@@ -15,32 +16,17 @@ function showMarker() {
   markerElement.style.top = `${marker.point.v * 100}%`;
   markerElement.querySelector('span').textContent = String(marker.index + 1);
 }
+
 function fail(error) {
+  if (failed) return;
   failed = true;
-  receiver?.setAudible(false);
+  frameConsumer?.setEnabled(false);
   canvas.hidden = true;
   markerElement.hidden = true;
   console.error(error);
   window.projection.failed();
 }
-let scene;
-let receiver;
-function silenceAndLatch(status) {
-  receiver?.setAudible(false);
-  if (status !== 'running') {
-    localLatch = true;
-    sawBlackAfterLatch = false;
-    canvas.hidden = true;
-  }
-  showMarker();
-}
-function statusUpdate(value) {
-  if (value.sessionId !== activeSessionId) return;
-  receiverStatus = value.status;
-  if (value.status !== 'running') silenceAndLatch(value.status);
-  else if (sourceKind === 'webrtc' && invalidateForResize(value.width, value.height)) return;
-  window.projection.reportWebRTCStatus(value);
-}
+
 function invalidateForResize(width, height) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
   const size = `${width}x${height}`;
@@ -48,87 +34,113 @@ function invalidateForResize(width, height) {
   if (lastVideoSize === size) return false;
   lastVideoSize = size;
   hasCopiedVideoFrame = false;
-  silenceAndLatch('stalled');
-  const value = { sessionId: activeSessionId, status: 'running', width, height, detail: 'Video dimensions changed; output requires Resume.' };
-  window.projection.reportWebRTCStatus(value);
+  localLatch = true;
+  sawBlackAfterLatch = false;
+  canvas.hidden = true;
+  scene.clearVideoSource();
+  showMarker();
   return true;
 }
-try {
-  scene = createScenePreview(canvas, fail, { projection: true });
-  receiver = createWebRTCReceiver({
-    onStatus: statusUpdate,
-    onFrame(video) {
-      if (failed || sourceKind !== 'webrtc') return;
-      if (invalidateForResize(video.videoWidth, video.videoHeight)) return;
-      if (currentMode !== 'live' || receiverStatus !== 'running') return;
-      const source = currentSnapshot?.source;
-      if (!source || source.kind !== 'webrtc' || source.status !== 'running') return;
-      if (localLatch) return;
-      scene.setVideoFrame(video);
-      hasCopiedVideoFrame = true;
-      canvas.hidden = false;
-      receiver.setAudible(true);
-      showMarker();
-    },
-    createVideoElement: () => videoElement,
-  });
-  scene.setMode('projector');
-  scene.setNavigation(false);
-  function present(value) {
-    if (failed) return;
-    try {
-      currentSnapshot = value;
-      currentMode = value.mode;
-      marker = value.calibrationMarker ?? null;
-      if (value.mode !== 'live') receiver.setAudible(false);
-      if (localLatch) {
-        if (value.mode !== 'live') sawBlackAfterLatch = true;
-        else if (sawBlackAfterLatch && value.source?.status === 'running') localLatch = false;
-      }
-      const nextSourceKind = value.source?.kind ?? 'reference';
-      if (nextSourceKind !== sourceKind) {
-        sourceKind = nextSourceKind;
-        localLatch = true; sawBlackAfterLatch = value.mode !== 'live';
-        hasCopiedVideoFrame = false;
-        canvas.hidden = true;
-        if (sourceKind === 'reference') {
-          activeSessionId = null; receiverStatus = 'disconnected'; lastVideoSize = null;
-          receiver.close(); scene.clearVideoSource();
-        } else {
-          receiver.setAudible(false);
-        }
-      }
-      const key = `${value.project.id}:${value.project.revision}:${value.referencePreview}`;
-      if (key !== revision && value.mode === 'live' && !localLatch) {
-        scene.setSnapshot(value);
-        revision = key;
-      }
-      canvas.hidden = value.mode === 'black' || (value.mode === 'live' && localLatch)
-        || (value.source?.kind === 'webrtc' && !hasCopiedVideoFrame);
-      showMarker();
-    } catch (error) { fail(error); }
-  }
-  window.projection.onWebRTCOffer(async ({ sessionId, offer }) => {
-    activeSessionId = sessionId;
-    receiverStatus = 'preparing';
+
+function receiveFrame(bitmap, metadata) {
+  if (failed || !currentSnapshot || sourceKind !== 'webrtc' || metadata.sessionId !== activeSessionId) return;
+  const source = currentSnapshot.source;
+  // IPC snapshots and BroadcastChannel frames are independently ordered. A
+  // delayed frame must not rewrite the size latch after the source resized.
+  if (source?.sessionId !== metadata.sessionId || source?.width !== metadata.width || source?.height !== metadata.height) return;
+  if (invalidateForResize(metadata.width, metadata.height)) return;
+  const outputReady = Boolean(currentSnapshot.output?.ready ?? currentSnapshot.output?.rendererReady);
+  if (currentMode !== 'live' || !outputReady || localLatch || source?.status !== 'running'
+    || source?.sessionId !== metadata.sessionId || source?.width !== metadata.width || source?.height !== metadata.height) return;
+  scene.setVideoFrame(bitmap);
+  hasCopiedVideoFrame = true;
+  canvas.hidden = false;
+  showMarker();
+}
+
+function ensureFrameConsumer(nextChannelName) {
+  if (typeof nextChannelName !== 'string' || !nextChannelName) throw new Error('Live media channel is unavailable.');
+  if (frameConsumer && channelName === nextChannelName) return;
+  frameConsumer?.close();
+  channelName = nextChannelName;
+  frameConsumer = createFrameConsumer({ channelName, onFrame: receiveFrame, onError: fail });
+}
+
+function updateFrameConsumer(snapshot) {
+  if (!frameConsumer) return;
+  const source = snapshot.source;
+  const nextKind = source?.kind ?? 'reference';
+  const nextSessionId = nextKind === 'webrtc' && typeof source?.sessionId === 'string' ? source.sessionId : null;
+  if (nextKind !== sourceKind || nextSessionId !== activeSessionId) {
+    sourceKind = nextKind;
+    activeSessionId = nextSessionId;
     lastVideoSize = null;
     hasCopiedVideoFrame = false;
-    localLatch = true; sawBlackAfterLatch = currentMode !== 'live';
-    receiver.setAudible(false);
-    try {
-      const answer = await receiver.acceptOffer(offer, sessionId);
-      window.projection.answerWebRTC({ sessionId, answer });
-    } catch (error) {
-      window.projection.answerWebRTC({ sessionId, error: error?.message || String(error) });
+    localLatch = true;
+    sawBlackAfterLatch = snapshot.mode !== 'live';
+    canvas.hidden = true;
+    scene.clearVideoSource();
+    frameConsumer.setSource(activeSessionId);
+  }
+
+  if (sourceKind === 'webrtc') {
+    if (source?.status !== 'running') {
+      if (hasCopiedVideoFrame || !localLatch) {
+        localLatch = true;
+        sawBlackAfterLatch = snapshot.mode !== 'live';
+        hasCopiedVideoFrame = false;
+        canvas.hidden = true;
+        scene.clearVideoSource();
+      }
+    } else if (invalidateForResize(source.width, source.height)) {
+      // A black authoritative snapshot counts as the black phase of this latch;
+      // the next explicit Resume can release it without requiring a second one.
+      if (snapshot.mode !== 'live') sawBlackAfterLatch = true;
     }
-  });
-  window.projection.onWebRTCReset(() => {
-    activeSessionId = null; receiverStatus = 'disconnected'; lastVideoSize = null; hasCopiedVideoFrame = false;
-    currentMode = 'black'; canvas.hidden = true; markerElement.hidden = true;
-    localLatch = true; sawBlackAfterLatch = false;
-    receiver.setAudible(false); receiver.close(); scene.clearVideoSource();
-  });
+  } else {
+    activeSessionId = null;
+    lastVideoSize = null;
+    hasCopiedVideoFrame = false;
+    scene.clearVideoSource();
+  }
+
+  const outputReady = Boolean(snapshot.output?.ready ?? snapshot.output?.rendererReady);
+  const enabled = sourceKind === 'webrtc' && Boolean(activeSessionId) && source?.status === 'running'
+    && Number.isFinite(source.width) && source.width > 0 && Number.isFinite(source.height) && source.height > 0
+    && snapshot.mode === 'live' && outputReady && !localLatch;
+  frameConsumer.setEnabled(enabled);
+}
+
+function present(value) {
+  if (failed) return;
+  try {
+    currentSnapshot = value;
+    currentMode = value.mode;
+    marker = value.calibrationMarker ?? null;
+    ensureFrameConsumer(value.mediaChannel);
+    if (localLatch) {
+      if (value.mode !== 'live') sawBlackAfterLatch = true;
+      else if (sawBlackAfterLatch && value.source?.status === 'running') localLatch = false;
+    }
+    updateFrameConsumer(value);
+    const key = `${value.project.id}:${value.project.revision}:${value.referencePreview}`;
+    if (key !== revision && value.mode === 'live' && !localLatch) {
+      scene.setSnapshot(value);
+      revision = key;
+    }
+    canvas.hidden = value.mode === 'black' || (value.mode === 'live' && localLatch)
+      || (value.source?.kind === 'webrtc' && !hasCopiedVideoFrame);
+    showMarker();
+  } catch (error) { fail(error); }
+}
+
+try {
+  scene = createScenePreview(canvas, fail, { projection: true });
+  scene.setMode('projector');
+  scene.setNavigation(false);
   window.projection.onSnapshot(present);
   window.projection.onMarker(value => { marker = value; showMarker(); });
   present(await window.projection.getSnapshot());
 } catch (error) { fail(error); }
+
+window.addEventListener('beforeunload', () => frameConsumer?.close(), { once: true });

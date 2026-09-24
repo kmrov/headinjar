@@ -17,7 +17,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const pivot = new THREE.Group();
   scene.add(pivot);
   let meshKey = null, model = null, snapshot = null, mode = 'placement', wireframe = false, navigation = true, calibrationEditing = false;
-  let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, gridTexture = null, frontDepthTarget = null;
+  let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, videoSourceRequired = false, gridTexture = null, frontDepthTarget = null;
   let sourceGeneration = 0, disposed = false, hasModelUV = false, modelBounds = null;
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = maskCanvas.height = 1024;
@@ -146,20 +146,20 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     model=next; pivot.add(next);captureFrontDepth(next);fit();
   }
   function applyImageSource() {
-    const texture = videoSourceActive ? videoTexture : sourceTexture;
+    const texture = videoSourceActive ? videoTexture : videoSourceRequired ? null : sourceTexture;
     uniforms.image.value=texture; uniforms.hasImage.value=Boolean(texture);
   }
   function updateSource(url) {
     if(url===textureKey) return;
     textureKey=url; const generation=++sourceGeneration;
     sourceTexture?.dispose(); sourceTexture=null;
-    if(!videoSourceActive) applyImageSource();
+    if(!videoSourceActive && !videoSourceRequired) applyImageSource();
     if(!url) return;
     new THREE.TextureLoader().load(url,(texture)=>{
       if(disposed || generation!==sourceGeneration){texture.dispose();return;}
       sourceTexture=texture; texture.colorSpace=THREE.SRGBColorSpace;
-      if(!videoSourceActive) { applyImageSource(); draw(); }
-    },undefined,()=>{if(generation===sourceGeneration && !videoSourceActive)onError(new Error('Reference image could not be decoded.'));});
+      if(!videoSourceActive && !videoSourceRequired) { applyImageSource(); draw(); }
+    },undefined,()=>{if(generation===sourceGeneration && !videoSourceActive && !videoSourceRequired)onError(new Error('Reference image could not be decoded.'));});
   }
   function updateMapping(project) {
     const {grid,transform,mask}=project.placement;
@@ -255,13 +255,16 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   return {
     setSnapshot(value){snapshot=value;loadModel(value.project.mesh);updateSource(value.referencePreview);updateMapping(value.project);if(projection)resize();else draw();},
     setVideoFrame(video){
-      if(disposed || !video || video.videoWidth<=0 || video.videoHeight<=0) return;
+      const width=video?.videoWidth||video?.displayWidth||video?.width||0;
+      const height=video?.videoHeight||video?.displayHeight||video?.height||0;
+      if(disposed || !video || width<=0 || height<=0) return;
       if(!videoCanvas){videoCanvas=document.createElement('canvas');videoContext=videoCanvas.getContext('2d',{alpha:false});}
-      if(videoCanvas.width!==video.videoWidth || videoCanvas.height!==video.videoHeight){videoCanvas.width=video.videoWidth;videoCanvas.height=video.videoHeight;}
+      if(videoCanvas.width!==width || videoCanvas.height!==height){videoCanvas.width=width;videoCanvas.height=height;}
       videoContext.drawImage(video,0,0,videoCanvas.width,videoCanvas.height);
       if(!videoTexture){videoTexture=new THREE.CanvasTexture(videoCanvas);videoTexture.colorSpace=THREE.SRGBColorSpace;videoTexture.minFilter=THREE.LinearFilter;videoTexture.magFilter=THREE.LinearFilter;}
       videoTexture.needsUpdate=true;videoSourceActive=true;applyImageSource();draw();
     },
+    setVideoSourceRequired(value){videoSourceRequired=Boolean(value);applyImageSource();draw();},
     clearVideoSource(){if(!videoSourceActive)return;videoSourceActive=false;applyImageSource();draw();},
     setMode(value){if(value===mode)return;mode=value;if(mode==='placement')fit();else draw();},
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},

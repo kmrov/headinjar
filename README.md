@@ -71,14 +71,14 @@ This is operator-guided 2D frame correction. It does not detect the object or au
 
 ### Live WebRTC input
 
-Open a project with a mesh and select an output display. Under **Source**, choose **WebRTC receiver** and **Start connection server**. The server listens on `127.0.0.1:19840` and stays off until started. It provides two connection methods:
+Under **Source**, choose **WebRTC receiver** and **Start connection server**. The server listens on `127.0.0.1:19840` and stays off until started. You can connect and inspect live video in the editor before opening an output display or importing a mesh. After importing a mesh, the same live frame appears on the model and in **Front → Align**. **Freeze preview** holds the editor and alignment view while the stream keeps running; it does not freeze the projector. The server provides two connection methods:
 
 - **Built-in sender:** use **Copy connection link** and open the link on the same computer. The page at `/sender` creates a test canvas video track and optional synthetic audio, then exchanges the offer and answer automatically. The link contains a per-start token in its URL fragment; keep it private.
 - **WHIP client:** use **Copy WHIP URL** and **Copy Bearer token**. Send a complete ICE-gathered SDP offer as `POST /whip` with `Content-Type: application/sdp` and `Authorization: Bearer <token>`. The `201` response contains SDP answer and a session `Location`. Apply the answer, then send authenticated `DELETE` to that exact `Location` when finished. Trickle ICE, `PATCH`, and ICE restart are not supported in this version.
 
 For a client on the same computer, the default WHIP endpoint is `http://127.0.0.1:19840/whip`. To use HTTPS, set both `HEADINJAR_TLS_CERT` and `HEADINJAR_TLS_KEY` to certificate and key file paths before starting the app. The certificate must cover `127.0.0.1` and be trusted by the client. A missing or unreadable certificate or key prevents the server from starting. The app does not expose the endpoint on a LAN interface.
 
-Live input does not turn on the projector. Use **Resume** after the stream connects. **Hold** freezes the last frame and mutes audio; **Blackout** and **Stop** show black and mute audio. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. The editor preview remains based on the reference image.
+Live input does not turn on the projector. Select a display and use **Resume** after the stream connects. **Hold** freezes the last projected frame and mutes audio; **Blackout** and **Stop** show black and mute audio. Closing or reopening Output keeps the WebRTC source connected. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. Switching back to Reference replaces the live editor preview with the saved reference image.
 
 ### Output controls
 

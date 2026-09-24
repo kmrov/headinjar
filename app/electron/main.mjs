@@ -11,8 +11,10 @@ import { createSignalingOfferGate } from './signaling-integration.mjs';
 import { startSignalingServer } from './signaling-server.mjs';
 
 const editorUrl = new URL('../renderer/editor.html', import.meta.url).href;
+const mediaChannel = randomUUID();
 let editorWindow;
 let outputWindow;
+let editorSourceReady = false;
 let projectController;
 const initialProject = createProject({ id: randomUUID(), name: 'Untitled project', now: new Date().toISOString() });
 let outputState = createOutputState();
@@ -25,8 +27,6 @@ let signalingGate;
 let signalingServer;
 let signalingStarting = null;
 let signalingClosing = null;
-
-const outputUrl = new URL('../renderer/output.html', import.meta.url).href;
 
 function sourceSnapshot() {
   const sessionSource = webRTCSession?.snapshot();
@@ -59,13 +59,27 @@ function signalingTlsOptions() {
   }
 }
 
+function signalingPort() {
+  const raw = process.env.HEADINJAR_SIGNALING_PORT;
+  if (raw === undefined) return 19840;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw new Error('HEADINJAR_SIGNALING_PORT must be an integer from 1 to 65535.');
+  }
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new Error('HEADINJAR_SIGNALING_PORT must be an integer from 1 to 65535.');
+  }
+  return port;
+}
+
 function snapshot({ includeSignaling = true } = {}) {
   const project = projectController.snapshot();
   return {
     ...project,
-    output: { ...outputState },
+    output: { ...outputState, ready: outputState.rendererReady },
     mode: getOutputMode(outputState),
     source: sourceSnapshot(),
+    mediaChannel,
     displayId: outputDisplayId,
     calibrationMarker,
     ...(includeSignaling ? { signaling: signalingSnapshot() } : {}),
@@ -109,7 +123,7 @@ async function startSignalingInner() {
   ]);
   const tls = signalingTlsOptions();
   return startSignalingServer({
-    host: '127.0.0.1', port: 19840, assets,
+    host: '127.0.0.1', port: signalingPort(), assets,
     ...(tls ? { tls } : {}),
     isBusy: () => signalingGate.isBusy(),
     acceptOffer: (offer, options) => signalingGate.acceptOffer(offer, options),
@@ -155,23 +169,21 @@ function installSecurity(window, expectedUrl) {
   contents.on('will-attach-webview', (event) => event.preventDefault());
   contents.on('did-start-loading', () => {
     if (window === editorWindow) {
+      editorSourceReady = false;
       setCalibrationMarker(null);
       void stopSignaling();
       webRTCSession?.reset('Editor reloaded. Reconnect the source.');
     }
     if (window === outputWindow) {
-      void stopSignaling();
-      webRTCSession?.outputClosed();
       updateOutput({ type: 'renderer-ready', ready: false });
     }
   });
   contents.on('render-process-gone', () => {
     if (window === outputWindow) {
-      void stopSignaling();
-      webRTCSession?.outputClosed();
       updateOutput({ type: 'renderer-ready', ready: false });
     }
     if (window === editorWindow) {
+      editorSourceReady = false;
       void stopSignaling();
       webRTCSession?.reset('Editor process stopped. Reconnect the source.');
     }
@@ -180,9 +192,7 @@ function installSecurity(window, expectedUrl) {
 }
 
 function clearOutput(confirmed = false) {
-  void stopSignaling();
   calibrationMarker = null;
-  webRTCSession?.outputClosed();
   if (outputWindow && !outputWindow.isDestroyed()) outputWindow.destroy();
   outputWindow = null;
   outputDisplayId = null;
@@ -217,18 +227,12 @@ function registerIpc() {
   ipcMain.on('output:failed', (event) => {
     if (outputWindow && event.sender === outputWindow.webContents && event.senderFrame === outputWindow.webContents.mainFrame) updateOutput({ type: 'renderer-ready', ready: false });
   });
-  const trustedOutput = event => Boolean(outputWindow && !outputWindow.isDestroyed()
-    && event.sender === outputWindow.webContents
-    && event.senderFrame === outputWindow.webContents.mainFrame
-    && event.senderFrame?.url === outputUrl);
-  ipcMain.on('output:webrtc-answer', (event, payload) => {
-    if (!trustedOutput(event)) return;
-    try { webRTCSession.receiveAnswer(payload); }
+  ipcMain.on('shell:webrtc-answer', (event, payload) => {
+    try { trusted(event); webRTCSession.receiveAnswer(payload); }
     catch (error) { console.warn('Ignored invalid WebRTC answer:', error instanceof Error ? error.message : error); }
   });
-  ipcMain.on('output:webrtc-status', (event, payload) => {
-    if (!trustedOutput(event)) return;
-    try { webRTCSession.receiveStatus(payload); }
+  ipcMain.on('shell:webrtc-status', (event, payload) => {
+    try { trusted(event); webRTCSession.receiveStatus(payload); }
     catch (error) { console.warn('Ignored invalid WebRTC status:', error instanceof Error ? error.message : error); }
   });
   const editorHandler = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
@@ -236,6 +240,11 @@ function registerIpc() {
     return handler(...args);
   });
   editorHandler('shell:get-snapshot', () => snapshot());
+  editorHandler('shell:source-ready', () => {
+    editorSourceReady = true;
+    publish();
+    return snapshot();
+  });
   editorHandler('shell:select-source', kind => {
     if (kind !== 'reference' && kind !== 'webrtc') throw new RangeError('Unsupported source kind');
     return Promise.resolve(kind === 'reference' ? stopSignaling() : null).then(() => {
@@ -251,7 +260,15 @@ function registerIpc() {
   editorHandler('shell:signaling-start', () => startSignaling());
   editorHandler('shell:signaling-stop', () => stopSignaling());
   editorHandler('shell:signaling-copy-url', () => {
-    if (!signalingServer || !/^https?:\/\/127\.0\.0\.1:19840\/sender#token=[a-f0-9]{64}$/.test(signalingServer.connectionUrl)) {
+    if (!signalingServer || typeof signalingServer.origin !== 'string' || typeof signalingServer.connectionUrl !== 'string') {
+      throw new Error('The signaling connection link is no longer available.');
+    }
+    let connectionUrl;
+    try { connectionUrl = new URL(signalingServer.connectionUrl); }
+    catch { throw new Error('The signaling connection link is no longer available.'); }
+    if (!['http:', 'https:'].includes(connectionUrl.protocol) || connectionUrl.origin !== signalingServer.origin
+      || connectionUrl.pathname !== '/sender' || connectionUrl.search
+      || connectionUrl.hash !== `#token=${signalingServer.token}` || !/^[a-f0-9]{64}$/.test(signalingServer.token)) {
       throw new Error('The signaling connection link is no longer available.');
     }
     clipboard.writeText(signalingServer.connectionUrl);
@@ -299,8 +316,6 @@ function registerIpc() {
     installSecurity(win, new URL('../renderer/output.html', import.meta.url).href);
     win.once('closed', () => {
       if (outputWindow !== win) return;
-      void stopSignaling();
-      webRTCSession?.outputClosed();
       outputWindow = null;
       outputDisplayId = null;
       outputBounds = null;
@@ -370,12 +385,20 @@ function createEditor() {
     webPreferences: {
       preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
+      backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required',
     },
   });
+  editorSourceReady = false;
   installSecurity(editorWindow, editorUrl);
   editorWindow.once('ready-to-show', () => editorWindow?.show());
   editorWindow.webContents.once('did-finish-load', publish);
-  editorWindow.on('closed', () => { editorWindow = null; void stopSignaling(); clearOutput(true); });
+  editorWindow.on('closed', () => {
+    editorSourceReady = false;
+    webRTCSession?.editorClosed();
+    editorWindow = null;
+    void stopSignaling();
+    clearOutput(true);
+  });
   editorWindow.loadURL(editorUrl);
 }
 
@@ -395,11 +418,11 @@ app.whenReady().then(() => {
   });
   webRTCSession = createWebRTCSessionController({
     sendOffer: payload => {
-      if (!outputWindow || outputWindow.isDestroyed() || !outputState.rendererReady) throw new Error('Output window is not ready.');
-      outputWindow.webContents.send('output:webrtc-offer', payload);
+      if (!editorSourceReady || !editorWindow || editorWindow.isDestroyed()) throw new Error('Editor source receiver is not ready.');
+      editorWindow.webContents.send('shell:webrtc-offer', payload);
     },
     sendReset: payload => {
-      if (outputWindow && !outputWindow.isDestroyed()) outputWindow.webContents.send('output:webrtc-reset', payload);
+      if (editorSourceReady && editorWindow && !editorWindow.isDestroyed()) editorWindow.webContents.send('shell:webrtc-reset', payload);
     },
     onStatus: publish,
     onDimensionsChanged: () => {
@@ -409,9 +432,7 @@ app.whenReady().then(() => {
   signalingGate = createSignalingOfferGate({
     session: webRTCSession,
     isReady: () => Boolean(webRTCSession.snapshot().kind === 'webrtc'
-      && projectController.snapshot().project.mesh
-      && outputWindow && !outputWindow.isDestroyed()
-      && outputDisplayId && outputState.rendererReady),
+      && editorSourceReady && editorWindow && !editorWindow.isDestroyed()),
   });
   registerIpc();
   createEditor();
