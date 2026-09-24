@@ -9,7 +9,7 @@ export function createSignalingOfferGate({ session, isReady }) {
 
   function acceptOffer(offer, { signal } = {}) {
     if (signal?.aborted) throw conflict('Offer request was cancelled.');
-    if (!isReady()) throw conflict('Open a ready output with a mesh and select WebRTC before connecting.');
+    if (!isReady()) throw conflict('Wait for the editor receiver to be ready and select WebRTC before connecting.');
     if (isBusy()) throw conflict('A WebRTC sender is already active or connecting. Disconnect it first.');
 
     const owner = {};

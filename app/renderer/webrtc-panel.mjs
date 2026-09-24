@@ -1,4 +1,4 @@
-export function createWebRTCPanel(root, { desktop, run, getSnapshot }) {
+export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverReady = () => true }) {
   const $ = selector => root.querySelector(selector);
   const source = $('#source-kind');
   const status = $('#webrtc-panel-status');
@@ -48,8 +48,7 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot }) {
     const size = current.width && current.height ? ` · ${current.width} × ${current.height}` : '';
     const session = current.sessionId ? ` · session ${current.sessionId.slice(0, 8)}` : '';
     status.textContent = `${stateLabel}${size}${session}. ${current.detail || ''}`;
-    const outputReady = Boolean(snapshot?.displayId && snapshot?.output?.rendererReady);
-    connect.disabled = current.kind !== 'webrtc' || !outputReady;
+    connect.disabled = current.kind !== 'webrtc' || !isReceiverReady();
     disconnect.disabled = current.kind !== 'webrtc' || current.status === 'disconnected';
     offer.disabled = current.kind !== 'webrtc';
     answer.readOnly = true;

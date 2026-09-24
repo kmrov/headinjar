@@ -113,6 +113,78 @@ test('running starts only after the browser reports a decoded frame', async () =
   assert.equal(h.pcs[0].remoteTracks[0].readyState, 'ended');
 });
 
+test('transient connectionState disconnected mutes and stalls without closing, then waits for a fresh decoded frame', async () => {
+  const h = makeHarness();
+  await h.receiver.acceptOffer({ type: 'offer', sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n' }, 'session');
+  const pc = h.pcs[0];
+  pc.fire('track', { track: pc.remoteTracks[0], streams: [] });
+  await Promise.resolve();
+  h.video.videoWidth = 640; h.video.videoHeight = 360; h.video.readyState = 2;
+  const [firstFrame] = h.frameCallbacks.values();
+  firstFrame(0, { width: 640, height: 360 });
+  h.receiver.setAudible(true);
+  const frameCount = h.frames.length;
+  const queuedFrame = [...h.frameCallbacks.values()][0];
+
+  pc.connectionState = 'disconnected';
+  pc.fire('connectionstatechange');
+  assert.equal(pc.closed, undefined);
+  assert.equal(h.video.muted, true);
+  assert.equal(h.statuses.at(-1).status, 'stalled');
+  const recoveryTimer = [...h.handlers.values()].find(timer => timer.ms === 10_000 && !timer.cleared);
+  assert.ok(recoveryTimer);
+
+  queuedFrame(100, { width: 640, height: 360 });
+  assert.equal(h.statuses.at(-1).status, 'stalled');
+  assert.equal(h.frames.length, frameCount);
+
+  pc.connectionState = 'connected';
+  pc.fire('connectionstatechange');
+  assert.equal(recoveryTimer.cleared, true);
+  const resumedFrame = [...h.frameCallbacks.values()].at(-1);
+  resumedFrame(200, { width: 640, height: 360 });
+  assert.equal(h.statuses.at(-1).status, 'running');
+  assert.equal(h.frames.length, frameCount + 1);
+  h.receiver.close();
+});
+
+test('persistent connectionState disconnected closes after a bounded recovery grace', async () => {
+  const h = makeHarness();
+  await h.receiver.acceptOffer({ type: 'offer', sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n' }, 'session');
+  const pc = h.pcs[0];
+  pc.connectionState = 'disconnected';
+  pc.fire('connectionstatechange');
+  const recoveryTimer = [...h.handlers.values()].find(timer => timer.ms === 10_000 && !timer.cleared);
+  assert.ok(recoveryTimer);
+  assert.equal(pc.closed, undefined);
+  recoveryTimer.fn();
+  assert.equal(pc.closed, true);
+  assert.equal(h.statuses.at(-1).status, 'disconnected');
+});
+
+test('disconnect grace is not shortened by a pending startup-frame deadline', async () => {
+  const h = makeHarness();
+  await h.receiver.acceptOffer({ type: 'offer', sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n' }, 'session');
+  const pc = h.pcs[0];
+  pc.connectionState = 'connected';
+  pc.fire('connectionstatechange');
+  const startupTimer = [...h.handlers.values()].find(timer => timer.ms === 15_000 && !timer.cleared);
+  assert.ok(startupTimer);
+
+  pc.connectionState = 'disconnected';
+  pc.fire('connectionstatechange');
+  assert.equal(startupTimer.cleared, true);
+  assert.equal(pc.closed, undefined);
+  const recoveryTimer = [...h.handlers.values()].find(timer => timer.ms === 10_000 && !timer.cleared);
+  assert.ok(recoveryTimer);
+
+  pc.connectionState = 'connected';
+  pc.fire('connectionstatechange');
+  assert.equal(pc.closed, undefined);
+  assert.ok([...h.handlers.values()].some(timer => timer.ms === 15_000 && !timer.cleared));
+  h.receiver.close();
+});
+
 test('decoded-frame timeout mutes locally and a later decoded frame reports recovery', async () => {
   const h = makeHarness();
   await h.receiver.acceptOffer({ type: 'offer', sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n' }, 'session');

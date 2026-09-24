@@ -103,7 +103,11 @@ export function createViewport(host, callbacks={}) {
     }
     if(!snapshot || mode!=='placement')return;
     if(tool==='align') {
-      if(!snapshot.referencePreview || !snapshot.project.mesh)return;
+      const source=snapshot.source;
+      const hasSource=source?.kind==='webrtc'
+        ? source.status==='running' && source.width>0 && source.height>0
+        : Boolean(snapshot.referencePreview);
+      if(!hasSource || !snapshot.project.mesh)return;
       const box=overlay.getBoundingClientRect();
       const pairs=snapshot.project.placement.alignment?.pairs??[];
       const nearest=pairs.map((pair,index)=>({index,p:scene?.projectDomain(pair.target)}))
@@ -166,10 +170,10 @@ export function createViewport(host, callbacks={}) {
       snapshot=value;previewPairs=null;previewGrid=null;
       const hasMesh=Boolean(value.project.mesh);empty.style.display=hasMesh?'none':'grid';canvas.style.display=hasMesh?'block':'none';
       if(hasMesh){
-        try{scene??=createScenePreview(canvas,callbacks.onError??(()=>{}));scene.setSnapshot(value);scene.setMode(mode);scene.setTextureOpacity(textureOpacity);
+        try{scene??=createScenePreview(canvas,callbacks.onError??(()=>{}));scene.setVideoSourceRequired(value.source?.kind==='webrtc');scene.setSnapshot(value);scene.setMode(mode);scene.setTextureOpacity(textureOpacity);
           if(value.project.placement.mappingMode==='uv'&&!scene.hasUV()){if(!uvWarning)report(new Error('This OBJ has no complete UV coordinates. Choose Front mapping.'));uvWarning=true;}else uvWarning=false;}
         catch(error){callbacks.onError?.(error);}
-      }else if(scene){scene.setSnapshot(value);}
+      }else if(scene){scene.setVideoSourceRequired(value.source?.kind==='webrtc');scene.setSnapshot(value);}
       updateInput();
     },
     setMaskExcluded(value){maskExcluded=Boolean(value);maskPoints=[];draw();},
@@ -181,6 +185,9 @@ export function createViewport(host, callbacks={}) {
     setGridVisibility(value){showGrid=value;draw();},
     setAlignmentSelection(index){alignmentSelection=index;draw();},
     setTextureOpacity(value){textureOpacity=value;scene?.setTextureOpacity(value);},
+    setVideoFrame(source){scene?.setVideoFrame(source);},
+    clearVideoSource(){scene?.clearVideoSource();},
+    setVideoSourceRequired(value){scene?.setVideoSourceRequired(value);},
     hasUV(){return scene?.hasUV()??false;},
     previewAlignment(pairs){
       previewPairs=pairs;

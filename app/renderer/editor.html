@@ -59,7 +59,16 @@
             <section class="webrtc-panel" id="webrtc-panel" aria-label="Live source connection">
               <label class="webrtc-source-label" for="source-kind">Projection source</label>
               <select id="source-kind"><option value="reference">Reference image</option><option value="webrtc">WebRTC receiver</option></select>
-              <p class="webrtc-preview-note">Editor preview uses the reference image only. Live WebRTC video appears in the output window.</p>
+              <p class="webrtc-preview-note">Receive and align live video here before opening Output. Freeze affects this preview only.</p>
+              <div class="webrtc-preview-window">
+                <canvas id="webrtc-preview-canvas" aria-label="Live WebRTC video preview" hidden></canvas>
+                <span id="webrtc-preview-empty">Choose WebRTC and connect a sender to preview live video.</span>
+              </div>
+              <div class="webrtc-preview-controls">
+                <button class="text-button" id="webrtc-preview-freeze" type="button" aria-pressed="false" disabled>Freeze preview</button>
+                <span id="webrtc-preview-status" role="status">No live video</span>
+              </div>
+              <video id="webrtc-video" autoplay playsinline muted aria-hidden="true" hidden></video>
               <p class="webrtc-status" id="webrtc-panel-status" role="status" aria-live="polite">Disconnected. Select WebRTC to connect.</p>
               <div class="signaling-controls">
                 <button class="button button-secondary rail-action" id="signaling-start" type="button">Start connection server</button>
@@ -68,7 +77,7 @@
                   <button class="text-button" id="signaling-copy" type="button" disabled>Copy link</button>
                   <button class="text-button" id="signaling-stop" type="button" disabled>Stop server</button>
                 </div>
-                <p class="webrtc-limit-note">Local connection server at 127.0.0.1:19840. Share this link only with the intended sender.</p>
+                <p class="webrtc-limit-note">The connection server is bound to localhost. Share this link only with the intended sender.</p>
                 <label class="webrtc-source-label" for="whip-url">WHIP endpoint</label>
                 <input id="whip-url" type="text" readonly aria-label="WHIP endpoint" placeholder="Start the server to create a WHIP endpoint">
                 <div class="signaling-actions">
@@ -103,9 +112,9 @@
             <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="uv">Model UV</option></select></label>
           </div>
           <div class="alignment-workspace">
-            <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment reference image" hidden>
+            <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment source image" hidden>
               <div class="alignment-source-heading"><strong>Reference image</strong><span>Click a landmark</span></div>
-              <div class="alignment-image-frame"><img class="alignment-image" alt="Reference image for landmark alignment" hidden><div class="alignment-empty">Add a reference image to align.</div><div class="alignment-markers" aria-label="Image landmarks"></div></div>
+              <div class="alignment-image-frame"><img class="alignment-image" alt="Reference image for landmark alignment" hidden><canvas class="alignment-live-image" aria-label="Live or frozen WebRTC image for landmark alignment" hidden></canvas><div class="alignment-empty">Add a reference image to align.</div><div class="alignment-markers" aria-label="Image landmarks"></div></div>
               <p class="alignment-step" aria-live="polite">Click a point on the image, then the model.</p>
             </section>
             <div class="viewport-frame">

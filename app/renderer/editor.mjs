@@ -7,6 +7,9 @@ import { createViewport } from './viewport.mjs';
 import { createAlignmentPanel } from './alignment-panel.mjs';
 import { createPhysicalCalibration } from './physical-calibration.mjs';
 import { createWebRTCPanel } from './webrtc-panel.mjs';
+import { createEditorWebRTCSource } from './editor-webrtc-source.mjs';
+import { createWebRTCReceiver } from './webrtc-receiver.mjs';
+import { createFramePublisher } from './media-frame-channel.mjs';
 
 const desktop = window.desktop;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -29,6 +32,9 @@ const ui = {
   blackout: $('#blackout'), hold: $('#hold-output'), resume: $('#resume-output'), stop: $('#stop-output'),
   displayDialog: $('#display-dialog'), displayList: $('#display-list'), confirmDisplay: $('#confirm-display'),
   viewport: $('#viewport'),
+  webrtcPreviewCanvas: $('#webrtc-preview-canvas'), webrtcPreviewEmpty: $('#webrtc-preview-empty'),
+  webrtcPreviewFreeze: $('#webrtc-preview-freeze'), webrtcPreviewStatus: $('#webrtc-preview-status'),
+  webrtcVideo: $('#webrtc-video'),
 };
 
 let snapshot = null;
@@ -41,6 +47,7 @@ let pendingAlignmentSource = null;
 let alignmentPanel;
 let physicalCalibration;
 let webrtcPanel;
+let editorWebRTCSource;
 let displays = [];
 let selectedDisplayId = null;
 let showGrid = true;
@@ -62,7 +69,7 @@ alignmentPanel = createAlignmentPanel(ui.alignmentSource, ui.alignmentPanel, {
       return;
     }
     pendingAlignmentSource = point;
-    alignmentPanel.render({ snapshot, pairs: alignmentPairs(), selected: selectedAlignment, pending: true, mode: 'front' });
+    alignmentPanel.render({ snapshot, pairs: alignmentPairs(), selected: selectedAlignment, pending: true, pendingSource: pendingAlignmentSource, mode: 'front' });
   },
   onSelect: (index) => {
     selectedAlignment = index;
@@ -203,6 +210,7 @@ function setMode(mode) {
   ui.viewport.setAttribute('aria-label', projector ? 'Projector calibration preview' : '3D model and image placement preview');
   $$('.tool-switch').forEach((toolbar) => { toolbar.hidden = projector; });
   if (viewportApi) {viewportApi.setMode(activeMode);viewportApi.setTextureOpacity(!projector&&activeTool==='align'?Number($('#texture-opacity').value):1);}
+  renderAlignment();
   updateCta();
 }
 
@@ -370,6 +378,7 @@ function renderSnapshot(next) {
     viewportApi?.setAlignmentSelection(null);
   }
   snapshot = next;
+  editorWebRTCSource?.updateSnapshot(snapshot);
   if (snapshot.project) renderProject(snapshot.project);
   physicalCalibration?.render(snapshot);
   webrtcPanel?.render(snapshot);
@@ -418,7 +427,7 @@ function renderAlignment(project = snapshot?.project) {
   ui.gridPanel.classList.toggle('is-uv-disabled', uv);
   ui.maskPanel.classList.toggle('is-uv-disabled', uv);
   if (uv && activeTool !== 'move') setTool('move');
-  alignmentPanel.render({ snapshot, pairs: placement.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), mode: mappingMode });
+  alignmentPanel.render({ snapshot, pairs: placement.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: mappingMode });
   const dimensions = placement.grid;
   $('#grid-dimensions').textContent = dimensions ? `${dimensions.columns} × ${dimensions.rows} control points` : 'Control grid';
 }
@@ -430,7 +439,7 @@ async function commitAlignmentPairs(pairs, apply = false) {
 
 function updateAlignmentPreview(pairs) {
   viewportApi?.previewAlignment(pairs);
-  alignmentPanel?.render({ snapshot, pairs, selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), mode: snapshot?.project?.placement?.mappingMode || 'front' });
+  alignmentPanel?.render({ snapshot, pairs, selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: snapshot?.project?.placement?.mappingMode || 'front' });
 }
 
 function placementValueFromInputs() {
@@ -447,8 +456,8 @@ function commitPlacement() {
   return safely(() => editProject({ type: 'placement-transform', value: placementValueFromInputs() }));
 }
 
-function vectorFromInputs(prefix, fields) {
-  return fields.map((field) => number($(`#${prefix}-${field}`).value, `${prefix} ${field.toUpperCase()}`));
+function vectorFromInputs(prefix, fields, separator = '-') {
+  return fields.map((field) => number($(`#${prefix}${separator}${field}`).value, `${prefix} ${field.toUpperCase()}`));
 }
 
 function commitProjector() {
@@ -458,12 +467,12 @@ function commitProjector() {
     const value = {
       ...(previous.calibration ? { calibration: previous.calibration } : {}),
       position: vectorFromInputs('projector', ['x', 'y', 'z']),
-      rotation: vectorFromInputs('camera-r', ['x', 'y', 'z']),
+      rotation: vectorFromInputs('camera-r', ['x', 'y', 'z'], ''),
       fov: number($('#projector-fov').value, 'Field of view'),
       offset: [number($('#projector-offset-x').value, 'Image offset X'), number($('#projector-offset-y').value, 'Image offset Y')],
       model: {
         position: vectorFromInputs('model', ['x', 'y', 'z']),
-        rotation: vectorFromInputs('model-r', ['x', 'y', 'z']),
+        rotation: vectorFromInputs('model-r', ['x', 'y', 'z'], ''),
         scale: number($('#model-scale').value, 'Model scale'),
       },
     };
@@ -766,6 +775,14 @@ webrtcPanel = createWebRTCPanel($('#webrtc-panel'), {
     return result;
   }),
   getSnapshot: () => snapshot,
+  isReceiverReady: () => Boolean(editorWebRTCSource),
+  getPreviewState: () => editorWebRTCSource?.getState(),
+});
+ui.webrtcPreviewFreeze.addEventListener('click', () => {
+  const state = editorWebRTCSource?.getState();
+  if (!state?.canFreeze) return;
+  editorWebRTCSource.setFrozen(!state.frozen);
+  renderWebRTCPreviewState(editorWebRTCSource.getState());
 });
 bindEvents();
 setMode(activeMode);
@@ -787,4 +804,49 @@ safely(async () => {
   hasProjectFile = Boolean(current.path);
   savedRevision = hasProjectFile ? current.project.revision : -1;
   renderSnapshot(current);
+  if (typeof current.mediaChannel === 'string' && current.mediaChannel) {
+    editorWebRTCSource = createEditorWebRTCSource({
+      desktop, mediaChannel: current.mediaChannel, videoElement: ui.webrtcVideo,
+      createReceiver: options => createWebRTCReceiver(options),
+      createPublisher: options => createFramePublisher(options),
+      onPreviewFrame: (canvas, metadata) => {
+        if (ui.webrtcPreviewCanvas.width !== canvas.width || ui.webrtcPreviewCanvas.height !== canvas.height) {
+          ui.webrtcPreviewCanvas.width = canvas.width;
+          ui.webrtcPreviewCanvas.height = canvas.height;
+        }
+        ui.webrtcPreviewCanvas.getContext('2d')?.drawImage(canvas, 0, 0);
+        ui.webrtcPreviewCanvas.hidden = false;
+        ui.webrtcPreviewEmpty.hidden = true;
+        viewportApi?.setVideoFrame(canvas);
+        alignmentPanel.setLiveFrame(canvas, metadata);
+      },
+      onClearPreview: () => {
+        ui.webrtcPreviewCanvas.hidden = true;
+        ui.webrtcPreviewEmpty.hidden = false;
+        viewportApi?.clearVideoSource();
+        alignmentPanel.setLiveFrame(null);
+        pendingAlignmentSource = null;
+        if (snapshot) renderAlignment();
+      },
+      onState: renderWebRTCPreviewState,
+    });
+    editorWebRTCSource.updateSnapshot(current);
+    await editorWebRTCSource.ready();
+    webrtcPanel.render(snapshot);
+  }
 });
+window.addEventListener('beforeunload', () => {
+  editorWebRTCSource?.close();
+  alignmentPanel?.destroy();
+}, { once: true });
+
+function renderWebRTCPreviewState(state = editorWebRTCSource?.getState()) {
+  if (!state) return;
+  ui.webrtcPreviewFreeze.disabled = !state.canFreeze;
+  ui.webrtcPreviewFreeze.setAttribute('aria-pressed', String(state.frozen));
+  ui.webrtcPreviewFreeze.textContent = state.frozen ? 'Follow live preview' : 'Freeze preview';
+  ui.webrtcPreviewStatus.textContent = state.frozen ? 'Preview frozen · stream continues'
+    : state.status === 'running' && state.hasFrame ? 'Live preview'
+      : state.status === 'error' ? 'Preview error' : snapshot?.source?.kind === 'webrtc' ? 'Waiting for live video' : 'No live video';
+  webrtcPanel?.render(snapshot);
+}

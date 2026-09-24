@@ -2,6 +2,7 @@ const MAX_SDP_BYTES = 256 * 1024;
 const OFFER_TIMEOUT_MS = 15_000;
 const ICE_TIMEOUT_MS = 10_000;
 const FRAME_TIMEOUT_MS = 10_000;
+const DISCONNECTED_GRACE_MS = 10_000;
 
 export function createWebRTCReceiver({
   onStatus = () => {}, onFrame = () => {},
@@ -44,7 +45,7 @@ export function createWebRTCReceiver({
   function cleanup(session, reason = new Error('WebRTC receiver closed.')) {
     if (!session || session.closed) return;
     session.closed = true;
-    clearTimer(session, 'offerTimer'); clearTimer(session, 'startupTimer'); clearTimer(session, 'frameTimer'); clearTimer(session, 'iceTimer');
+    clearTimer(session, 'offerTimer'); clearTimer(session, 'startupTimer'); clearTimer(session, 'frameTimer'); clearTimer(session, 'iceTimer'); clearTimer(session, 'disconnectTimer');
     clearTimer(session, 'fallbackTimer');
     clearFrameCallback(session); removeListeners(session);
     for (const receiver of session.pc.getReceivers?.() ?? []) receiver.track?.stop?.();
@@ -81,6 +82,10 @@ export function createWebRTCReceiver({
     const decoded = () => {
       session.frameCallback = null;
       if (active !== session || session.closed) return;
+      if (session.connectionDisconnected) {
+        session.frameCallback = video.requestVideoFrameCallback(decoded);
+        return;
+      }
       session.hasDecodedFrame = true;
       clearTimer(session, 'offerTimer'); clearTimer(session, 'startupTimer');
       report(session, 'running');
@@ -113,8 +118,8 @@ export function createWebRTCReceiver({
     }
     const pc = new RTCPeerConnection({ iceServers: [], bundlePolicy: 'max-bundle' });
     const stream = new MediaStream();
-    const session = { id: sessionId, pc, stream, closed: false, listeners: [], offerTimer: null, startupTimer: null, frameTimer: null, iceTimer: null, frameCallback: null,
-      fallbackTimer: null, hasVideoTrack: false, hasAudioTrack: false, hasDecodedFrame: false, rejectPending: null, lastStatusSignature: null };
+    const session = { id: sessionId, pc, stream, closed: false, listeners: [], offerTimer: null, startupTimer: null, frameTimer: null, iceTimer: null, disconnectTimer: null, frameCallback: null,
+      fallbackTimer: null, hasVideoTrack: false, hasAudioTrack: false, hasDecodedFrame: false, connectionDisconnected: false, rejectPending: null, lastStatusSignature: null };
     active = session;
     report(session, 'preparing');
     const pending = new Promise((resolve, reject) => {
@@ -126,7 +131,31 @@ export function createWebRTCReceiver({
         if (state === 'connected' && session.answerReady && !session.hasDecodedFrame && session.startupTimer === null) {
           session.startupTimer = schedule(() => fail(session, new Error('No decoded video frame arrived within 15 seconds after connection.')), 15_000);
         }
-        if (state === 'failed' || state === 'closed' || state === 'disconnected') {
+        if (state === 'disconnected') {
+          if (!session.connectionDisconnected) {
+            session.connectionDisconnected = true;
+            video.muted = true;
+            session.hasDecodedFrame = false;
+            clearTimer(session, 'startupTimer');
+            clearTimer(session, 'frameTimer');
+            report(session, 'stalled', 'Peer connection disconnected; waiting for recovery.');
+            session.disconnectTimer = schedule(() => {
+              if (active !== session || session.closed || !session.connectionDisconnected || pc.connectionState !== 'disconnected') return;
+              video.muted = true;
+              report(session, 'disconnected', 'Peer connection remained disconnected for 10 seconds.');
+              cleanup(session, new Error('WebRTC peer connection remained disconnected for 10 seconds.'));
+            }, DISCONNECTED_GRACE_MS);
+          }
+          return;
+        }
+        if (state === 'connected' && session.connectionDisconnected) {
+          clearTimer(session, 'disconnectTimer');
+          session.connectionDisconnected = false;
+          video.muted = true;
+          session.hasDecodedFrame = false;
+          report(session, 'stalled', 'Peer connection recovered; waiting for a decoded video frame.');
+        }
+        if (state === 'failed' || state === 'closed') {
           video.muted = true;
           report(session, 'disconnected', `Peer connection ${state}.`);
           cleanup(session, new Error(`WebRTC peer connection ${state}.`));
