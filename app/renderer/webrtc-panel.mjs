@@ -1,6 +1,8 @@
 export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverReady = () => true }) {
   const $ = selector => root.querySelector(selector);
   const source = $('#source-kind');
+  const referenceContent = $('#reference-source-content');
+  const videoContent = $('#webrtc-panel');
   const status = $('#webrtc-panel-status');
   const offer = $('#webrtc-offer');
   const answer = $('#webrtc-answer');
@@ -20,10 +22,13 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
   whipCopyUrl.addEventListener('click', () => run(() => desktop.copyWhipUrl()));
   whipCopyToken.addEventListener('click', () => run(() => desktop.copyWhipToken()));
 
-  source.addEventListener('change', () => run(async () => {
-    const snapshot = await desktop.selectSource(source.value);
-    if (snapshot?.project) return snapshot;
-  }));
+  source.addEventListener('change', async () => {
+    const kind = source.value;
+    referenceContent.hidden = kind === 'webrtc';
+    videoContent.hidden = kind !== 'webrtc';
+    await run(() => desktop.selectSource(kind));
+    render(getSnapshot());
+  });
 
   connect.addEventListener('click', () => run(async () => {
     let parsed;
@@ -41,6 +46,8 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
   function render(snapshot = getSnapshot()) {
     const current = snapshot?.source || { kind: 'reference', status: 'disconnected', detail: '' };
     source.value = current.kind;
+    referenceContent.hidden = current.kind === 'webrtc';
+    videoContent.hidden = current.kind !== 'webrtc';
     const stateLabel = current.status === 'running' ? 'Connected'
       : current.status === 'preparing' ? 'Creating answer'
         : current.status === 'stalled' ? 'Stream stalled'

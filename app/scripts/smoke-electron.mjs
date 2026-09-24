@@ -37,6 +37,16 @@ try {
   await assert.rejects(invoke('newProject', '   '));
   await invoke('newProject', 'Smoke project');
   assert.equal((await invoke('getSnapshot')).project.name, 'Smoke project');
+  assert.equal(await editor.locator('#reference-source-content').isVisible(), true, 'image controls are visible for the image source');
+  assert.equal(await editor.locator('#webrtc-panel').isVisible(), false, 'video controls are hidden for the image source');
+  await editor.locator('#source-kind').selectOption('webrtc');
+  await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).source.kind === 'webrtc');
+  assert.equal(await editor.locator('#reference-source-content').isVisible(), false, 'image controls hide for WebRTC');
+  assert.equal(await editor.locator('#webrtc-panel').isVisible(), true, 'video controls appear for WebRTC');
+  await editor.locator('#source-kind').selectOption('reference');
+  await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).source.kind === 'reference');
+  assert.equal(await editor.locator('#reference-source-content').isVisible(), true, 'image controls reappear');
+  assert.equal(await editor.locator('#webrtc-panel').isVisible(), false, 'video controls hide again');
   const isEditor=await editor.locator('#placement-x').count();
   if(isEditor){
     await editor.evaluate(()=>document.fonts.ready);

@@ -46,28 +46,28 @@
           </section>
 
           <section class="rail-section source-section">
-            <div class="section-heading"><h2>Source</h2><span class="section-kicker">Image</span></div>
-            <div class="asset-name-row"><span id="reference-name">Reference image</span><span id="reference-state" class="asset-state muted">None</span></div>
-            <div class="reference-preview asset-preview">
-              <img id="reference-thumb" alt="Loaded reference image" hidden>
-              <div class="empty-thumb" id="reference-empty"><i class="ph ph-image" aria-hidden="true"></i><span id="reference-empty-label">No reference image</span></div>
-
+            <div class="section-heading"><h2>Source</h2></div>
+            <label class="source-kind-label" for="source-kind">Source type</label>
+            <select id="source-kind" class="source-kind-select"><option value="reference">Image</option><option value="webrtc">Live video · WebRTC</option></select>
+            <div id="reference-source-content">
+              <div class="asset-name-row"><span id="reference-name">Reference image</span><span id="reference-state" class="asset-state muted">None</span></div>
+              <div class="reference-preview asset-preview">
+                <img id="reference-thumb" alt="Loaded reference image" hidden>
+                <div class="empty-thumb" id="reference-empty"><i class="ph ph-image" aria-hidden="true"></i><span id="reference-empty-label">No reference image</span></div>
+              </div>
+              <button class="button button-secondary rail-action" id="import-reference" type="button"><i class="ph ph-image-square" aria-hidden="true"></i><span id="reference-action-label">Add reference image</span></button>
+              <p class="asset-warning" id="reference-warning" hidden></p>
             </div>
-            <button class="button button-secondary rail-action" id="import-reference" type="button"><i class="ph ph-image-square" aria-hidden="true"></i><span id="reference-action-label">Add reference image</span></button>
-            <p class="asset-warning" id="reference-warning" hidden></p>
-            <div class="source-health" id="source-health"><span class="health-dot" aria-hidden="true"></span><div><strong id="source-status">Live source not connected</strong><small id="source-detail">An image reference helps line up the head.</small></div></div>
-            <section class="webrtc-panel" id="webrtc-panel" aria-label="Live source connection">
-              <label class="webrtc-source-label" for="source-kind">Projection source</label>
-              <select id="source-kind"><option value="reference">Reference image</option><option value="webrtc">WebRTC receiver</option></select>
-              <p class="webrtc-preview-note">Receive and align live video here before opening Output. Freeze affects this preview only.</p>
+            <section class="webrtc-panel" id="webrtc-panel" aria-label="Live video connection" hidden>
               <div class="webrtc-preview-window">
                 <canvas id="webrtc-preview-canvas" aria-label="Live WebRTC video preview" hidden></canvas>
-                <span id="webrtc-preview-empty">Choose WebRTC and connect a sender to preview live video.</span>
+                <span id="webrtc-preview-empty">Connect a sender to preview live video.</span>
               </div>
               <div class="webrtc-preview-controls">
                 <button class="text-button" id="webrtc-preview-freeze" type="button" aria-pressed="false" disabled>Freeze preview</button>
                 <span id="webrtc-preview-status" role="status">No live video</span>
               </div>
+              <p class="webrtc-preview-note">Receive and align live video before opening Output. Freeze affects this preview only.</p>
               <video id="webrtc-video" autoplay playsinline muted aria-hidden="true" hidden></video>
               <p class="webrtc-status" id="webrtc-panel-status" role="status" aria-live="polite">Disconnected. Select WebRTC to connect.</p>
               <div class="signaling-controls">
@@ -97,6 +97,7 @@
                 <p class="webrtc-limit-note">Manual non-trickle SDP. STUN/TURN, relays, and automatic reconnect are not configured.</p>
               </details>
             </section>
+            <div class="source-health" id="source-health"><span class="health-dot" aria-hidden="true"></span><div><strong id="source-status">Live source not connected</strong><small id="source-detail">An image reference helps line up the head.</small></div></div>
           </section>
         </aside>
 
