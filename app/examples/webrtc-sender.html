@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob:; media-src blob:">
+  <title>Head in Jar WebRTC test sender</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background:#101317; color:#e8edf2 }
+    body { max-width: 960px; margin: 32px auto; padding: 0 20px }
+    h1 { font-size: 23px }
+    p { color:#aab5bf }
+    .row { display:flex; gap:12px; align-items:center; margin:14px 0 }
+    button { border:0; border-radius:6px; padding:9px 14px; color:white; background:#2563eb; cursor:pointer }
+    button:disabled { opacity:.45; cursor:default }
+    textarea { display:block; box-sizing:border-box; width:100%; min-height:135px; resize:vertical; border:1px solid #3b4550; border-radius:6px; padding:10px; background:#171c22; color:#dce6ef; font:12px/1.4 ui-monospace,monospace }
+    canvas { width:100%; max-height:360px; object-fit:contain; background:#000; border-radius:8px }
+    #status { min-height:1.5em; color:#9fc5ff }
+  </style>
+</head>
+<body>
+  <h1>WebRTC test sender</h1>
+  <p id="intro">Creates a moving canvas video and synthetic audio for a WebRTC test. It never requests camera or microphone access or plays the test tone through your speakers. Open this page as a file for manual SDP exchange, or use the receiver's connection link for automatic setup.</p>
+  <div class="row"><button id="start">Start / create offer</button><button id="connect" disabled>Connect answer</button><button id="stop" disabled>Stop</button></div>
+  <div id="status" role="status">Stopped.</div>
+  <canvas id="pattern" width="640" height="360"></canvas>
+  <h2 id="offer-heading">Offer (JSON)</h2><textarea id="offer" spellcheck="false" aria-label="Offer JSON"></textarea>
+  <h2 id="answer-heading">Answer (JSON)</h2><textarea id="answer" spellcheck="false" aria-label="Answer JSON" placeholder='Paste {"type":"answer","sdp":"..."}'></textarea>
+  <script defer src="./webrtc-sender.mjs"></script>
+</body>
+</html>

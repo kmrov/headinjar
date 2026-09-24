@@ -112,6 +112,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .source-health > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .source-health strong { color: #9fa9a5; font-size: 11px; font-weight: 500; }
 .source-health small { color: #75807b; font-size: 10px; line-height: 1.45; }
+.webrtc-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-soft); }
+.webrtc-source-label { color: #aeb9b3; font-size: 10px; }
+.webrtc-panel select, .webrtc-panel textarea { width: 100%; padding: 8px; color: #d5ded9; border: 1px solid #38413d; border-radius: 4px; background: #111514; font: inherit; font-size: 10px; }
+.webrtc-panel textarea { min-height: 82px; resize: vertical; line-height: 1.45; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.webrtc-panel textarea:disabled { opacity: .55; }
+.webrtc-preview-note, .webrtc-limit-note { margin: 0; color: #87928c; font-size: 9px; line-height: 1.5; }
+.webrtc-status { min-height: 30px; margin: 0; padding: 7px 8px; color: #acb8b1; border-left: 2px solid #6b7971; background: #1d2320; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.webrtc-disconnect { align-self: flex-start; }
+.signaling-controls { display: flex; flex-direction: column; gap: 7px; }
+.signaling-controls input { box-sizing: border-box; width: 100%; padding: 8px; color: #9faba5; border: 1px solid #38413d; border-radius: 4px; background: #111514; font: 9px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.signaling-actions { display: flex; gap: 14px; }
+.signaling-controls code { color: #b5cabb; font: inherit; }
+.signaling-actions button:disabled { opacity: .45; }
+.webrtc-manual { padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.webrtc-manual summary { color: #aeb9b3; font-size: 9px; cursor: pointer; }
+.webrtc-manual[open] { display: flex; flex-direction: column; gap: 8px; }
 .health-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: #65706b; box-shadow: 0 0 0 3px rgb(101 112 107 / 12%); }
 [data-state="live"] .health-dot, .health-dot[data-state="live"] { background: #8bd1a9; box-shadow: 0 0 0 3px rgb(139 209 169 / 12%); }
 [data-state="ready"] .health-dot, .health-dot[data-state="ready"] { background: #c5d79a; box-shadow: 0 0 0 3px rgb(197 215 154 / 12%); }
