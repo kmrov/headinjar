@@ -17,7 +17,7 @@ export function createViewport(host, callbacks={}) {
   host.append(empty,canvas,overlay,label,hint);
   const context=overlay.getContext('2d');
   let snapshot=null,tool='move',mode='placement',showGrid=true,selected=null,drag=null,maskPoints=[],maskExcluded=false,scene=null;
-  let alignmentSelection=null, alignmentDrag=null, previewPairs=null, previewGrid=null, textureOpacity=1, uvWarning=false;
+  let alignmentSelection=null, alignmentDrag=null, alignmentPan=null, previewPairs=null, previewGrid=null, textureOpacity=1, uvWarning=false;
   let physical={active:false,picking:false,pairs:[],selected:null},physicalDrag=null;
   host.tabIndex=0;
   function physicalUV(event){const b=canvas.getBoundingClientRect();return {u:Math.max(0,Math.min(1,(event.clientX-b.left)/b.width)),v:Math.max(0,Math.min(1,(event.clientY-b.top)/b.height))};}
@@ -35,7 +35,7 @@ export function createViewport(host, callbacks={}) {
     const hasMesh=Boolean(snapshot?.project.mesh);
     label.textContent=hasMesh?'OBJ preview · normalized fit':'No model loaded';
     label.style.display=tool==='align'?'none':'';
-    hint.textContent=!hasMesh?'':mode==='projector'?'Calibration preview':tool==='align'?'Pick matching landmarks · drag a marker to refine':tool==='grid'?'Source UV grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
+    hint.textContent=!hasMesh?'':mode==='projector'?'Calibration preview':tool==='align'?'Pick landmarks · wheel zoom · middle-drag pan · drag markers':tool==='grid'?'Source UV grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
     if(mode==='projector'&&physical.active){
       label.textContent='Original projector image · point editing';
       hint.textContent=physical.picking?'Click a landmark on the head':'Drag orange crosshair · arrows 1 px · Shift 10 px';
@@ -91,6 +91,15 @@ export function createViewport(host, callbacks={}) {
   function updateInput(){overlay.style.pointerEvents=mode==='placement'&&tool!=='move'||mode==='projector'&&physical.active?'auto':'none';scene?.setNavigation(tool==='move'&&!physical.active);draw();}
   function clearPreview() {previewPairs=null;previewGrid=null;scene?.clearPreview();draw();}
   function report(error){callbacks.onError?.(error);}
+  function endAlignmentPan(){if(!alignmentPan)return;alignmentPan=null;scene?.endPan();}
+  overlay.addEventListener('wheel',(event)=>{
+    if(mode!=='placement'||tool!=='align')return;
+    event.preventDefault();
+    const multiplier=event.deltaMode===1?16:event.deltaMode===2?host.clientHeight:1;
+    scene?.zoomAt(event.clientX,event.clientY,Math.exp(-event.deltaY*multiplier*0.0015));
+    draw();
+  },{passive:false});
+  overlay.addEventListener('contextmenu',(event)=>{if(mode==='placement'&&tool==='align')event.preventDefault();});
   overlay.addEventListener('pointerdown',(event)=>{
     if(snapshot&&mode==='projector'&&physical.active){
       event.preventDefault();host.focus({preventScroll:true});
@@ -103,6 +112,14 @@ export function createViewport(host, callbacks={}) {
     }
     if(!snapshot || mode!=='placement')return;
     if(tool==='align') {
+      if(event.button===1){
+        event.preventDefault();host.focus({preventScroll:true});
+        if(snapshot.project.mesh&&scene?.beginPan(event.clientX,event.clientY)){
+          alignmentPan={x:event.clientX,y:event.clientY};overlay.setPointerCapture(event.pointerId);
+        }
+        return;
+      }
+      if(event.button!==0)return;
       const source=snapshot.source;
       const hasSource=source?.kind==='webrtc'
         ? source.status==='running' && source.width>0 && source.height>0
@@ -128,6 +145,11 @@ export function createViewport(host, callbacks={}) {
   });
   overlay.addEventListener('pointermove',(event)=>{
     if(physicalDrag){physicalDrag.point=physicalUV(event);callbacks.onPhysicalDrag?.(physicalDrag.index,physicalDrag.point,false);return;}
+    if(alignmentPan){
+      const dx=event.clientX-alignmentPan.x,dy=event.clientY-alignmentPan.y;
+      alignmentPan={x:event.clientX,y:event.clientY};
+      scene?.panBy(dx,dy,host.clientWidth,host.clientHeight);draw();return;
+    }
     if(alignmentDrag){
       const point=scene?.pick(event.clientX,event.clientY);if(!point)return;
       alignmentDrag.point=point;alignmentDrag.moved=true;
@@ -140,6 +162,7 @@ export function createViewport(host, callbacks={}) {
   });
   overlay.addEventListener('pointerup',(event)=>{
     if(physicalDrag){const current=physicalDrag;physicalDrag=null;if(current.point)Promise.resolve(callbacks.onPhysicalDrag?.(current.index,current.point,true)).catch(report);return;}
+    if(alignmentPan){endAlignmentPan();return;}
     if(alignmentDrag){
       const current=alignmentDrag;alignmentDrag=null;
       if(current.moved&&current.point){
@@ -150,7 +173,8 @@ export function createViewport(host, callbacks={}) {
     if(drag===null)return;const index=drag;drag=null;
     Promise.resolve(callbacks.onGridPoint?.(index,uv(event))).catch(report).finally(clearPreview);
   });
-  overlay.addEventListener('pointercancel',()=>{physicalDrag=null;callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
+  overlay.addEventListener('pointercancel',()=>{physicalDrag=null;endAlignmentPan();callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
+  overlay.addEventListener('lostpointercapture',endAlignmentPan);
   overlay.addEventListener('click',(event)=>{
     if(mode!=='placement'||tool!=='mask'||!snapshot||event.detail>1)return;
     const point=uv(event);if(point.u<0||point.u>1||point.v<0||point.v>1)return;maskPoints.push({u:Math.max(0,Math.min(1,point.u)),v:Math.max(0,Math.min(1,point.v))});draw();
@@ -177,8 +201,8 @@ export function createViewport(host, callbacks={}) {
       updateInput();
     },
     setMaskExcluded(value){maskExcluded=Boolean(value);maskPoints=[];draw();},
-    setTool(value){tool=value;maskPoints=[];drag=null;alignmentDrag=null;clearPreview();if(tool==='align')scene?.fit();updateInput();},
-    setMode(value){mode=value;scene?.setMode(value);updateInput();},
+    setTool(value){endAlignmentPan();tool=value;maskPoints=[];drag=null;alignmentDrag=null;clearPreview();if(tool==='align')scene?.fit();updateInput();},
+    setMode(value){endAlignmentPan();mode=value;scene?.setMode(value);updateInput();},
     setPhysicalCalibration(value){physical=value;scene?.setCalibrationEditing(value.active);updateInput();},
     getPhysicalLandmarks(){return (snapshot?.project.placement.alignment?.pairs??[]).map(pair=>scene?.projectDomainNormalized(pair.target)).filter(Boolean);},
     setWireframe(value){scene?.setWireframe(value);},
@@ -198,7 +222,7 @@ export function createViewport(host, callbacks={}) {
       draw();
     },
     clearAlignmentPreview:clearPreview,
-    fit(){scene?.fit();draw();},
+    fit(){endAlignmentPan();scene?.fit();draw();},
     destroy(){observer.disconnect();scene?.destroy();host.replaceChildren();},
   };
 }

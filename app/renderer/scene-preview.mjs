@@ -3,6 +3,9 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createProjectionWarp } from './projection-warp.mjs';
 
+const MIN_MODEL_ZOOM = 1;
+const MAX_MODEL_ZOOM = 8;
+
 // The shell owns arming; projection mode renders unlit color on black.
 export function createScenePreview(canvas, onError, { projection = false } = {}) {
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
@@ -19,6 +22,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   let meshKey = null, model = null, snapshot = null, mode = 'placement', wireframe = false, navigation = true, calibrationEditing = false;
   let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, videoSourceRequired = false, gridTexture = null, frontDepthTarget = null;
   let sourceGeneration = 0, disposed = false, hasModelUV = false, modelBounds = null;
+  let panDepth = null;
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = maskCanvas.height = 1024;
   const maskContext = maskCanvas.getContext('2d');
@@ -196,6 +200,53 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     const hit=ray.intersectObject(model,true)[0];
     return hit ? domainOf(hit.point) : null;
   }
+  function zoomAt(clientX,clientY,factor) {
+    if(disposed || projection || mode!=='placement' || !model || !Number.isFinite(factor) || factor<=0) return false;
+    const rect=canvas.getBoundingClientRect();
+    if(!rect.width || !rect.height) return false;
+    scene.updateMatrixWorld(true); camera.updateMatrixWorld(true);
+    const ndcX=(clientX-rect.left)/rect.width*2-1, ndcY=1-(clientY-rect.top)/rect.height*2;
+    const raycaster=new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndcX,ndcY),camera);
+    const hit=raycaster.intersectObject(model,true)[0];
+    let anchor=hit?.point.clone()??null;
+    if(!anchor){
+      const normal=camera.getWorldDirection(new THREE.Vector3());
+      const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,controls.target);
+      anchor=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
+    }
+    if(!anchor) return false;
+    const targetZoom=THREE.MathUtils.clamp(camera.zoom*factor,MIN_MODEL_ZOOM,MAX_MODEL_ZOOM);
+    if(targetZoom===camera.zoom) return false;
+    const screenAnchor=anchor.clone().project(camera);
+    zoomCameraAtPoint(camera,controls,anchor,screenAnchor.x,screenAnchor.y,targetZoom);
+    draw();
+    return true;
+  }
+  function beginPan(clientX,clientY) {
+    if(disposed || projection || mode!=='placement' || !model) return false;
+    const rect=canvas.getBoundingClientRect();
+    if(!rect.width || !rect.height) return false;
+    scene.updateMatrixWorld(true); camera.updateMatrixWorld(true);
+    const ndc=new THREE.Vector2((clientX-rect.left)/rect.width*2-1,1-(clientY-rect.top)/rect.height*2);
+    const raycaster=new THREE.Raycaster();
+    raycaster.setFromCamera(ndc,camera);
+    const hit=raycaster.intersectObject(model,true)[0];
+    let anchor=hit?.point.clone()??null;
+    if(!anchor){
+      const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()),controls.target);
+      anchor=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
+    }
+    panDepth=anchor?Math.max(1e-9,-camera.worldToLocal(anchor.clone()).z):camera.position.distanceTo(controls.target);
+    return true;
+  }
+  function panBy(deltaX,deltaY,width,height) {
+    if(disposed || projection || mode!=='placement' || !model || ![deltaX,deltaY,width,height].every(Number.isFinite) || width<=0 || height<=0) return false;
+    panCameraByPixels(camera,controls,deltaX,deltaY,width,height,panDepth);
+    draw();
+    return true;
+  }
+  function endPan() { panDepth=null; }
   function projectDomain(point) {
     if(!model || !modelBounds) return null;
     scene.updateMatrixWorld(true); camera.updateMatrixWorld(true);
@@ -225,6 +276,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   function updateCamera() {
     controls.enabled=navigation&&mode==='placement';
     if(mode==='projector'&&snapshot){
+      camera.zoom=1;
       const p=snapshot.project.projector;
       camera.position.fromArray(p.position);camera.rotation.set(...p.rotation.map(THREE.MathUtils.degToRad));camera.fov=p.fov;
     }
@@ -249,7 +301,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     } else renderer.render(scene,camera);
   }
   function resize() {renderer.setSize(projection&&snapshot?snapshot.project.output.width:Math.max(1,canvas.clientWidth),projection&&snapshot?snapshot.project.output.height:Math.max(1,canvas.clientHeight),false);draw();}
-  function fit(){camera.position.set(0,0,3.5);camera.fov=45;controls.target.set(0,0,0);controls.update();draw();}
+  function fit(){camera.zoom=1;camera.position.set(0,0,3.5);camera.fov=45;controls.target.set(0,0,0);controls.update();draw();}
   controls.addEventListener('change',draw);
   const observer=new ResizeObserver(resize);observer.observe(canvas);
   return {
@@ -270,7 +322,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},
     setNavigation(value){navigation=value;controls.enabled=value&&mode==='placement';},
     setCalibrationEditing(value){calibrationEditing=Boolean(value);draw();},
-    pick, projectDomain, projectDomainNormalized,
+    pick, projectDomain, projectDomainNormalized, zoomAt, beginPan, panBy, endPan,
     hasUV(){return hasModelUV;},
     setTextureOpacity(value){uniforms.textureOpacity.value=Math.max(0,Math.min(1,Number(value)));draw();},
     previewPlacement(placement){if(snapshot){updateMapping({...snapshot.project,placement});draw();}},
@@ -278,4 +330,39 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     fit,
     destroy(){disposed=true;sourceGeneration++;observer.disconnect();controls.dispose();releaseModel();sourceTexture?.dispose();videoTexture?.dispose();gridTexture?.dispose();maskTexture.dispose();frontCaptureMaterial.dispose();material.dispose();projectionWarp?.destroy();renderer.dispose();},
   };
+}
+
+/** Set perspective zoom while translating the view so a world point stays under the same cursor. */
+export function zoomCameraAtPoint(camera,controls,worldPoint,ndcX,ndcY,requestedZoom) {
+  camera.zoom=THREE.MathUtils.clamp(requestedZoom,MIN_MODEL_ZOOM,MAX_MODEL_ZOOM);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  const projected=worldPoint.clone().project(camera);
+  const local=camera.worldToLocal(worldPoint.clone());
+  const distance=Math.max(1e-9,-local.z);
+  const focal=camera.zoom/Math.tan(THREE.MathUtils.degToRad(camera.fov)/2);
+  const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);
+  const up=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
+  const shift=right.multiplyScalar((projected.x-ndcX)*distance*camera.aspect/focal)
+    .add(up.multiplyScalar((projected.y-ndcY)*distance/focal));
+  camera.position.add(shift);
+  controls.target.add(shift);
+  controls.update();
+  camera.updateMatrixWorld(true);
+  return camera.zoom;
+}
+
+/** Pan the view by CSS-pixel deltas at the controls target's depth. */
+export function panCameraByPixels(camera,controls,deltaX,deltaY,width,height,anchorDepth=null) {
+  const distance=Number.isFinite(anchorDepth)&&anchorDepth>0?anchorDepth:camera.position.distanceTo(controls.target);
+  const visibleHeight=2*distance*Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)/camera.zoom;
+  const worldPerPixelX=visibleHeight*camera.aspect/width;
+  const worldPerPixelY=visibleHeight/height;
+  const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);
+  const up=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
+  const shift=right.multiplyScalar(-deltaX*worldPerPixelX).add(up.multiplyScalar(deltaY*worldPerPixelY));
+  camera.position.add(shift);
+  controls.target.add(shift);
+  controls.update();
+  camera.updateMatrixWorld(true);
 }
