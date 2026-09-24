@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; base-uri 'none'; object-src 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Output</title>
   <link rel="stylesheet" href="./output.css">
 </head>
-<body><canvas id="projection" hidden></canvas><div id="calibration-marker" hidden><span></span></div><script type="module" src="../dist/output.js"></script></body>
+<body><video id="webrtc-video" autoplay playsinline muted hidden></video><canvas id="projection" hidden></canvas><div id="calibration-marker" hidden><span></span></div><script type="module" src="../dist/output.js"></script></body>
 </html>

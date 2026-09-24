@@ -6,6 +6,7 @@ import './editor.css';
 import { createViewport } from './viewport.mjs';
 import { createAlignmentPanel } from './alignment-panel.mjs';
 import { createPhysicalCalibration } from './physical-calibration.mjs';
+import { createWebRTCPanel } from './webrtc-panel.mjs';
 
 const desktop = window.desktop;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -39,6 +40,7 @@ let selectedAlignment = null;
 let pendingAlignmentSource = null;
 let alignmentPanel;
 let physicalCalibration;
+let webrtcPanel;
 let displays = [];
 let selectedDisplayId = null;
 let showGrid = true;
@@ -135,6 +137,23 @@ function statusLabel(source) {
   if (!source) return { label: 'Source disconnected', detail: 'No live source is connected', state: 'off' };
   const status = String(source.status || 'disconnected');
   const detail = source.detail || '';
+  if (source.kind === 'webrtc') {
+    const labels = {
+      preparing: ['Creating WebRTC answer', detail || 'Waiting for ICE gathering…', 'working'],
+      ready: ['WebRTC ready', detail || 'Waiting for video frames', 'ready'],
+      running: ['WebRTC connected', detail || 'Receiving video', 'live'],
+      stalled: ['WebRTC stream stalled', detail || 'Waiting for decoded frames', 'error'],
+      error: ['WebRTC connection error', detail || 'Check the offer and sender connection', 'error'],
+      disconnected: ['WebRTC disconnected', detail || 'Connect an offer to start receiving', 'off'],
+    };
+    const [label, message, state] = labels[status] || ['WebRTC status unavailable', detail || 'Connection state is unknown', 'off'];
+    return { label, detail: message, state };
+  }
+  if (source.kind === 'reference') {
+    return source.connected
+      ? { label: 'Reference image ready', detail: detail || 'Static reference source', state: 'live' }
+      : { label: 'Reference image unavailable', detail: detail || 'Import a reference image and model', state: 'off' };
+  }
   const labels = {
     preparing: ['Preparing source', detail || 'Connecting to source…', 'working'],
     ready: ['Source ready', detail || 'Waiting for frames', 'ready'],
@@ -282,7 +301,7 @@ function renderProject(project) {
 
   renderProjector(project.projector);
   $('#resolution-status').textContent = `${project.output.width} × ${project.output.height}`;
-  ui.sourceHealth.classList.toggle('is-ready', Boolean(reference));
+  ui.sourceHealth.classList.toggle('is-ready', Boolean(snapshot?.source?.connected));
   if (viewportApi) viewportApi.setSnapshot(snapshot);
   renderAlignment(project);
 }
@@ -353,6 +372,7 @@ function renderSnapshot(next) {
   snapshot = next;
   if (snapshot.project) renderProject(snapshot.project);
   physicalCalibration?.render(snapshot);
+  webrtcPanel?.render(snapshot);
   renderOutput(snapshot.output, snapshot.source);
   if (snapshot.error && snapshot.error !== lastSnapshotError) reportError(new Error(snapshot.error));
   lastSnapshotError = snapshot.error || null;
@@ -737,6 +757,15 @@ physicalCalibration = createPhysicalCalibration(ui.projectorPanel, {
   onMarker: value => desktop.setCalibrationMarker?.(value),
   getLandmarks: () => viewportApi?.getPhysicalLandmarks() ?? [],
   onError: reportError,
+});
+webrtcPanel = createWebRTCPanel($('#webrtc-panel'), {
+  desktop,
+  run: action => safely(async () => {
+    const result = await action();
+    if (result?.project) renderSnapshot(result);
+    return result;
+  }),
+  getSnapshot: () => snapshot,
 });
 bindEvents();
 setMode(activeMode);

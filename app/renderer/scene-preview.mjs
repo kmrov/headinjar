@@ -17,7 +17,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const pivot = new THREE.Group();
   scene.add(pivot);
   let meshKey = null, model = null, snapshot = null, mode = 'placement', wireframe = false, navigation = true, calibrationEditing = false;
-  let textureKey = null, sourceTexture = null, gridTexture = null, frontDepthTarget = null;
+  let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, gridTexture = null, frontDepthTarget = null;
   let sourceGeneration = 0, disposed = false, hasModelUV = false, modelBounds = null;
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = maskCanvas.height = 1024;
@@ -145,17 +145,21 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     next.position.copy(center).multiplyScalar(-scale); next.scale.setScalar(scale);
     model=next; pivot.add(next);captureFrontDepth(next);fit();
   }
+  function applyImageSource() {
+    const texture = videoSourceActive ? videoTexture : sourceTexture;
+    uniforms.image.value=texture; uniforms.hasImage.value=Boolean(texture);
+  }
   function updateSource(url) {
     if(url===textureKey) return;
     textureKey=url; const generation=++sourceGeneration;
-    uniforms.hasImage.value=false;
-    sourceTexture?.dispose(); sourceTexture=null; uniforms.image.value=null;
+    sourceTexture?.dispose(); sourceTexture=null;
+    if(!videoSourceActive) applyImageSource();
     if(!url) return;
     new THREE.TextureLoader().load(url,(texture)=>{
       if(disposed || generation!==sourceGeneration){texture.dispose();return;}
       sourceTexture=texture; texture.colorSpace=THREE.SRGBColorSpace;
-      uniforms.image.value=texture; uniforms.hasImage.value=true; draw();
-    },undefined,()=>{if(generation===sourceGeneration)onError(new Error('Reference image could not be decoded.'));});
+      if(!videoSourceActive) { applyImageSource(); draw(); }
+    },undefined,()=>{if(generation===sourceGeneration && !videoSourceActive)onError(new Error('Reference image could not be decoded.'));});
   }
   function updateMapping(project) {
     const {grid,transform,mask}=project.placement;
@@ -250,6 +254,15 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const observer=new ResizeObserver(resize);observer.observe(canvas);
   return {
     setSnapshot(value){snapshot=value;loadModel(value.project.mesh);updateSource(value.referencePreview);updateMapping(value.project);if(projection)resize();else draw();},
+    setVideoFrame(video){
+      if(disposed || !video || video.videoWidth<=0 || video.videoHeight<=0) return;
+      if(!videoCanvas){videoCanvas=document.createElement('canvas');videoContext=videoCanvas.getContext('2d',{alpha:false});}
+      if(videoCanvas.width!==video.videoWidth || videoCanvas.height!==video.videoHeight){videoCanvas.width=video.videoWidth;videoCanvas.height=video.videoHeight;}
+      videoContext.drawImage(video,0,0,videoCanvas.width,videoCanvas.height);
+      if(!videoTexture){videoTexture=new THREE.CanvasTexture(videoCanvas);videoTexture.colorSpace=THREE.SRGBColorSpace;videoTexture.minFilter=THREE.LinearFilter;videoTexture.magFilter=THREE.LinearFilter;}
+      videoTexture.needsUpdate=true;videoSourceActive=true;applyImageSource();draw();
+    },
+    clearVideoSource(){if(!videoSourceActive)return;videoSourceActive=false;applyImageSource();draw();},
     setMode(value){if(value===mode)return;mode=value;if(mode==='placement')fit();else draw();},
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},
     setNavigation(value){navigation=value;controls.enabled=value&&mode==='placement';},
@@ -260,6 +273,6 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     previewPlacement(placement){if(snapshot){updateMapping({...snapshot.project,placement});draw();}},
     clearPreview(){if(snapshot){updateMapping(snapshot.project);draw();}},
     fit,
-    destroy(){disposed=true;sourceGeneration++;observer.disconnect();controls.dispose();releaseModel();sourceTexture?.dispose();gridTexture?.dispose();maskTexture.dispose();frontCaptureMaterial.dispose();material.dispose();projectionWarp?.destroy();renderer.dispose();},
+    destroy(){disposed=true;sourceGeneration++;observer.disconnect();controls.dispose();releaseModel();sourceTexture?.dispose();videoTexture?.dispose();gridTexture?.dispose();maskTexture.dispose();frontCaptureMaterial.dispose();material.dispose();projectionWarp?.destroy();renderer.dispose();},
   };
 }

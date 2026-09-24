@@ -18,10 +18,11 @@ Electron · Three.js · JavaScript
 - **Place your image** — adjust position, scale, and rotation; refine a control grid; draw coverage masks.
 - **Match landmarks** — pair points on an image and a model to fit a front-facing texture.
 - **Calibrate projection** — tune the projector camera and model pose, then align projected landmarks with a physical object.
+- **Receive a live source** — accept one WebRTC video stream with optional audio through the built-in sender page or a WHIP client.
 - **Control a separate display** — use Resume, Hold, Blackout, and Stop during setup and projection.
 - **Keep your work** — save projects, recover interrupted sessions, and undo or redo edits.
 
-**Status:** early development. Static image projection is available; live video input and packaged installers are not yet included. Linux with X11/XWayland is the exercised desktop setup; other platforms are not yet verified.
+**Status:** early development. Static images and one live WebRTC source are available. Packaged installers are not yet included. Linux with X11/XWayland is the exercised desktop setup; other platforms are not yet verified.
 
 ## Get started
 
@@ -68,6 +69,17 @@ Texture alignment fits the image to the digital model. Physical alignment correc
 
 This is operator-guided 2D frame correction. It does not detect the object or automatically solve its 3D pose.
 
+### Live WebRTC input
+
+Open a project with a mesh and select an output display. Under **Source**, choose **WebRTC receiver** and **Start connection server**. The server listens on `127.0.0.1:19840` and stays off until started. It provides two connection methods:
+
+- **Built-in sender:** use **Copy connection link** and open the link on the same computer. The page at `/sender` creates a test canvas video track and optional synthetic audio, then exchanges the offer and answer automatically. The link contains a per-start token in its URL fragment; keep it private.
+- **WHIP client:** use **Copy WHIP URL** and **Copy Bearer token**. Send a complete ICE-gathered SDP offer as `POST /whip` with `Content-Type: application/sdp` and `Authorization: Bearer <token>`. The `201` response contains SDP answer and a session `Location`. Apply the answer, then send authenticated `DELETE` to that exact `Location` when finished. Trickle ICE, `PATCH`, and ICE restart are not supported in this version.
+
+For a client on the same computer, the default WHIP endpoint is `http://127.0.0.1:19840/whip`. To use HTTPS, set both `HEADINJAR_TLS_CERT` and `HEADINJAR_TLS_KEY` to certificate and key file paths before starting the app. The certificate must cover `127.0.0.1` and be trusted by the client. A missing or unreadable certificate or key prevents the server from starting. The app does not expose the endpoint on a LAN interface.
+
+Live input does not turn on the projector. Use **Resume** after the stream connects. **Hold** freezes the last frame and mutes audio; **Blackout** and **Stop** show black and mute audio. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. The editor preview remains based on the reference image.
+
 ### Output controls
 
 | Control | Effect |
@@ -88,7 +100,7 @@ Projects are saved as JSON with mesh geometry, placement, landmarks, and project
 Run these commands from `app/`:
 
 ```sh
-npm test        # Mapping, project, history, output state, and IPC tests
+npm test        # Mapping, project, output, IPC, WebRTC, signaling, and WHIP tests
 npm run build   # Bundle the editor and projector renderers
 npm run smoke   # Launch Electron and exercise the desktop workflow
 ```

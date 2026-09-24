@@ -56,6 +56,38 @@
             <button class="button button-secondary rail-action" id="import-reference" type="button"><i class="ph ph-image-square" aria-hidden="true"></i><span id="reference-action-label">Add reference image</span></button>
             <p class="asset-warning" id="reference-warning" hidden></p>
             <div class="source-health" id="source-health"><span class="health-dot" aria-hidden="true"></span><div><strong id="source-status">Live source not connected</strong><small id="source-detail">An image reference helps line up the head.</small></div></div>
+            <section class="webrtc-panel" id="webrtc-panel" aria-label="Live source connection">
+              <label class="webrtc-source-label" for="source-kind">Projection source</label>
+              <select id="source-kind"><option value="reference">Reference image</option><option value="webrtc">WebRTC receiver</option></select>
+              <p class="webrtc-preview-note">Editor preview uses the reference image only. Live WebRTC video appears in the output window.</p>
+              <p class="webrtc-status" id="webrtc-panel-status" role="status" aria-live="polite">Disconnected. Select WebRTC to connect.</p>
+              <div class="signaling-controls">
+                <button class="button button-secondary rail-action" id="signaling-start" type="button">Start connection server</button>
+                <input id="signaling-url" type="text" readonly aria-label="WebRTC connection link" placeholder="Start the server to create a local connection link">
+                <div class="signaling-actions">
+                  <button class="text-button" id="signaling-copy" type="button" disabled>Copy link</button>
+                  <button class="text-button" id="signaling-stop" type="button" disabled>Stop server</button>
+                </div>
+                <p class="webrtc-limit-note">Local connection server at 127.0.0.1:19840. Share this link only with the intended sender.</p>
+                <label class="webrtc-source-label" for="whip-url">WHIP endpoint</label>
+                <input id="whip-url" type="text" readonly aria-label="WHIP endpoint" placeholder="Start the server to create a WHIP endpoint">
+                <div class="signaling-actions">
+                  <button class="text-button" id="whip-copy-url" type="button" disabled>Copy WHIP URL</button>
+                  <button class="text-button" id="whip-copy-token" type="button" disabled>Copy Bearer token</button>
+                </div>
+                <p class="webrtc-limit-note">WHIP senders must finish ICE gathering before POST. Use the copied token as <code>Authorization: Bearer …</code>.</p>
+              </div>
+              <details class="webrtc-manual">
+                <summary>Advanced · manual SDP diagnostics</summary>
+                <label class="webrtc-source-label" for="webrtc-offer">Offer JSON from sender</label>
+                <textarea id="webrtc-offer" rows="5" spellcheck="false" placeholder='{"type":"offer","sdp":"…"}'></textarea>
+                <button class="button button-secondary rail-action" id="webrtc-connect" type="button" disabled>Connect manually</button>
+                <label class="webrtc-source-label" for="webrtc-answer">Answer JSON to send back</label>
+                <textarea id="webrtc-answer" rows="5" spellcheck="false" readonly placeholder="Answer appears here after ICE gathering completes"></textarea>
+                <button class="text-button webrtc-disconnect" id="webrtc-disconnect" type="button" disabled>Disconnect</button>
+                <p class="webrtc-limit-note">Manual non-trickle SDP. STUN/TURN, relays, and automatic reconnect are not configured.</p>
+              </details>
+            </section>
           </section>
         </aside>
 
