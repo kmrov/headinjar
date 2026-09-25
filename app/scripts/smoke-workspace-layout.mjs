@@ -22,6 +22,15 @@ try {
   await editor.locator('#toggle-sources').waitFor({ state: 'visible' });
   const initialRevision = await editor.evaluate(async () => (await window.desktop.getSnapshot()).project.revision);
 
+  const expandedToggle = editor.locator('#toggle-sources');
+  const collapsedToggle = editor.locator('#show-sources');
+  assert.equal(await editor.locator('.source-rail').locator('#toggle-sources').count(), 1, 'hide control belongs to sources panel');
+  assert.equal(await expandedToggle.isVisible(), true);
+  assert.equal(await collapsedToggle.isVisible(), false, 'show control stays hidden while sources are open');
+  const headingBox = await editor.locator('.model-section .section-heading').boundingBox();
+  const hideBox = await expandedToggle.boundingBox();
+  assert.ok(hideBox.x >= headingBox.x && hideBox.x + hideBox.width <= headingBox.x + headingBox.width, 'hide control sits in Model heading');
+
   const width = selector => editor.locator(selector).evaluate(element => element.getBoundingClientRect().width);
   const dragBy = async (selector, pixels) => {
     const box = await editor.locator(selector).boundingBox();
@@ -50,12 +59,19 @@ try {
 
   await editor.locator('#toggle-sources').click();
   assert.equal(await editor.locator('.source-rail').isVisible(), false);
-  assert.equal(await editor.locator('#toggle-sources').getAttribute('aria-expanded'), 'false');
+  assert.equal(await expandedToggle.isVisible(), false);
+  assert.equal(await collapsedToggle.isVisible(), true, 'show control appears when sources are hidden');
+  assert.equal(await collapsedToggle.getAttribute('aria-expanded'), 'false');
+  const showBox = await collapsedToggle.boundingBox();
+  const canvasBox = await editor.locator('.canvas-column').boundingBox();
+  assert.ok(showBox.x >= canvasBox.x && showBox.x < canvasBox.x + 45, 'show control sits at preview left edge');
   if (process.env.MAPPING_LAYOUT_CAPTURE === '1') await editor.screenshot({ path: join(tmpdir(), 'mapping-layout-collapsed.png'), scale: 'css' });
   await editor.reload();
-  await editor.locator('#toggle-sources').waitFor({ state: 'visible' });
+  await collapsedToggle.waitFor({ state: 'visible' });
   assert.equal(await editor.locator('.source-rail').isVisible(), false, 'hidden sidebar survives reload');
-  await editor.locator('#toggle-sources').click();
+  await collapsedToggle.click();
+  assert.equal(await expandedToggle.isVisible(), true);
+  assert.equal(await collapsedToggle.isVisible(), false);
   assert.ok(near(await width('.source-rail'), expandedSource), 'sidebar width survives reload');
   assert.ok(near(await width('.inspector'), expandedInspector - 16), 'inspector width survives reload');
 

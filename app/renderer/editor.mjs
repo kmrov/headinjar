@@ -40,7 +40,7 @@ const ui = {
 const workspaceLayout = createWorkspaceLayout({
   workspace: $('.workspace'), sources: $('#sources-panel'), sourceDivider: $('#source-divider'),
   inspector: $('#inspector-panel'), inspectorDivider: $('#inspector-divider'),
-  toggle: $('#toggle-sources'),
+  toggle: $('#toggle-sources'), showToggle: $('#show-sources'),
 });
 
 let snapshot = null;

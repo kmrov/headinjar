@@ -9,7 +9,7 @@ const KEY_STEP = 16;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function createWorkspaceLayout({ workspace, sources, sourceDivider, inspector, inspectorDivider, toggle }) {
+export function createWorkspaceLayout({ workspace, sources, sourceDivider, inspector, inspectorDivider, toggle, showToggle }) {
   let stored;
   try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { stored = null; }
   const initialSource = sources.getBoundingClientRect().width;
@@ -42,9 +42,8 @@ export function createWorkspaceLayout({ workspace, sources, sourceDivider, inspe
     workspace.classList.toggle('is-source-collapsed', collapsed);
     sources.hidden = collapsed;
     sourceDivider.hidden = collapsed;
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    toggle.setAttribute('aria-label', collapsed ? 'Show sources panel' : 'Hide sources panel');
-    toggle.title = collapsed ? 'Show sources panel' : 'Hide sources panel';
+    toggle.hidden = collapsed;
+    showToggle.hidden = !collapsed;
     sourceDivider.setAttribute('aria-valuemin', String(SOURCE_MIN));
     sourceDivider.setAttribute('aria-valuemax', String(Math.max(SOURCE_MIN, Math.min(SOURCE_MAX, layout.available - layout.inspector))));
     sourceDivider.setAttribute('aria-valuenow', String(Math.round(layout.source)));
@@ -109,11 +108,13 @@ export function createWorkspaceLayout({ workspace, sources, sourceDivider, inspe
     });
   }
 
-  toggle.addEventListener('click', () => {
+  const toggleSources = () => {
     collapsed = !collapsed;
     render();
     save();
-  });
+  };
+  toggle.addEventListener('click', toggleSources);
+  showToggle.addEventListener('click', toggleSources);
   bindDivider(sourceDivider, 'source');
   bindDivider(inspectorDivider, 'inspector');
   const onWindowResize = () => render();

@@ -34,7 +34,7 @@
       <main class="workspace">
         <aside class="source-rail" id="sources-panel" aria-label="Project sources">
           <section class="rail-section model-section">
-            <div class="section-heading"><h2>Model</h2><span class="section-kicker">3D</span></div>
+            <div class="section-heading"><h2>Model</h2><div class="section-heading-actions"><span class="section-kicker">3D</span><button class="panel-toggle" id="toggle-sources" type="button" aria-controls="sources-panel" aria-expanded="true" aria-label="Hide sources panel" title="Hide sources panel"><i class="ph ph-sidebar-simple" aria-hidden="true"></i></button></div></div>
             <div class="asset-name-row"><span id="model-name">No model loaded</span><span id="model-state" class="asset-state">Required</span></div>
             <button class="button button-secondary rail-action" id="import-mesh" type="button"><i class="ph ph-cube" aria-hidden="true"></i><span id="model-action-label">Import OBJ</span></button>
           </section>
@@ -100,7 +100,7 @@
 
         <section class="canvas-column" aria-label="Preview workspace">
           <div class="canvas-toolbar">
-            <div class="canvas-heading"><button class="panel-toggle" id="toggle-sources" type="button" aria-controls="sources-panel" aria-expanded="true" aria-label="Hide sources panel" title="Hide sources panel"><i class="ph ph-sidebar-simple" aria-hidden="true"></i></button><h1 id="canvas-title">Model preview</h1><span class="scene-badge" id="canvas-badge">Placement</span></div>
+            <div class="canvas-heading"><button class="panel-toggle" id="show-sources" type="button" aria-controls="sources-panel" aria-expanded="false" aria-label="Show sources panel" title="Show sources panel" hidden><i class="ph ph-sidebar-simple" aria-hidden="true"></i></button><h1 id="canvas-title">Model preview</h1><span class="scene-badge" id="canvas-badge">Placement</span></div>
             <div class="tool-switch" role="toolbar" aria-label="Placement tools">
               <button class="tool-button is-selected" type="button" data-tool="move" aria-pressed="true"><i class="ph ph-arrows-out-cardinal" aria-hidden="true"></i><span>Move</span></button>
               <button class="tool-button" type="button" data-tool="place" aria-pressed="false" hidden><i class="ph ph-hand-pointing" aria-hidden="true"></i><span>Place image</span></button>
