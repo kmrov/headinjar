@@ -41,8 +41,8 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -58,7 +58,23 @@ jobs:
             npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
           fi
       - run: npm ci
-      - run: npm test
+      - name: Test
+        shell: bash
+        run: |
+          set +e
+          npm test > test-output.log 2>&1
+          result=$?
+          cat test-output.log
+          if (( result != 0 )); then
+            {
+              echo "### Tests failed on ${{ matrix.name }}"
+              echo '```'
+              tail -n 120 test-output.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            node -e 'const fs=require("node:fs"); const lines=fs.readFileSync("test-output.log","utf8").trim().split("\n").slice(-120).join("\n"); console.log("::error title=npm test failed::"+lines.replaceAll("%","%25").replaceAll("\r","%0D").replaceAll("\n","%0A"))'
+          fi
+          exit "$result"
       - run: npm run build
       - name: Package
         run: npm run package -- --${{ matrix.platform }} --${{ matrix.arch }}
