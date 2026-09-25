@@ -15,11 +15,11 @@ Electron · Three.js · JavaScript
 ## In the editor
 
 - Import an OBJ, orbit around it, and check the surface in the studio-lit 3D preview.
-- Move, scale, and rotate an image. Use the grid and masks when the simple fit needs help.
+- Move, scale, and rotate an image. Use landmarks for a closer fit and masks to limit coverage.
 - Pair landmarks on the image and model to fit a front-facing texture.
-- Tune the projector camera and model pose, then align projected points with a physical object.
+- Align projected model points with a physical object.
 - Bring in one WebRTC video stream, with optional audio, from the built-in sender page or a WHIP client.
-- Control the second display with **Resume**, **Hold**, **Blackout**, and **Stop**.
+- Control the second display with **Start projection**, **Hold**, and **Stop projection**.
 - Save your project, recover an interrupted session, and undo or redo edits.
 
 This is still early software. You can use static images or one live WebRTC source. The desktop setup has been tested on Linux with X11/XWayland. A macOS user has opened the unsigned package, but physical projector behavior on macOS still needs a real-device check.
@@ -59,9 +59,9 @@ Start with the [illustrated beginner tutorial](docs/tutorial.md). Its screenshot
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
 2. **Place the texture.** Use Front mapping for a front-facing image. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture.
-3. **Refine coverage.** Use Grid for local adjustments and Mask to limit coverage. Double-click to finish a mask contour.
-4. **Choose an output display.** Select the projector display and open black output, then use **Resume** to show the image. Output starts black until explicitly enabled.
-5. **Match the physical object.** Open **Projector calibration** and adjust image offset, model scale and rotation, and camera perspective.
+3. **Refine coverage.** Use Mask to limit coverage. Double-click to finish a mask contour.
+4. **Choose an output display.** Click **Choose display** in the bottom bar, select the projector, then click **Start projection**. Output opens black until explicitly started.
+5. **Match the physical object.** Open **Projector calibration** and drag its model points until their projected marks match the real surface, then click **Apply**.
 6. **Save the project.** Keep the reference image accessible at its original path.
 
 For precise landmark placement in **Front → Align**, zoom the source image and model independently with the mouse wheel at the cursor. Middle-drag to pan either view. **Fit source** resets the image; **Fit view** resets the model. These view changes do not alter the saved texture placement or projector calibration.
@@ -79,13 +79,12 @@ A front photo cannot show the sides or back of an object. And if an OBJ has UV c
 
 Texture alignment fits the image to the digital model. Physical alignment corrects the final projector frame to match a real object.
 
-1. Fix the projector and object in place, then set a reasonable camera and model pose.
-2. Under **Projector calibration → Projection alignment points**, choose **Use model landmarks**, or use **Add point** to select a point on the model preview.
-3. Select a landmark. With output live, a numbered cross appears on the projector.
-4. Move its target while watching the physical object. Arrow keys move one output pixel; Shift + arrow moves ten. Target X/Y fields provide numeric control.
-5. Repeat for at least three non-collinear points, up to twelve, then choose **Apply alignment**.
+1. Fix the projector and object in place. Visible landmarks from Image placement → Align appear automatically in **Projector calibration**. If there are none, use **Add point** to pick a place on the model.
+2. Click **Choose display** in the bottom bar, select the projector, then click **Start projection**.
+3. Select a numbered point. Its cross appears on the real surface. Drag the orange point in the preview until the projected cross matches that place.
+4. Repeat for at least three non-collinear points, up to twelve, then click **Apply**.
 
-**Edit points** returns to the uncorrected preview for editing; **Reset alignment** clears the correction. Invalid or folded warps are rejected. Changes to the camera, model pose, mesh, or output dimensions reset physical calibration; changing the reference image preserves it.
+After Apply, the projected cross disappears; select a point again to continue adjusting it. Invalid or folded corrections are rejected. Changing the mesh or output dimensions resets physical calibration; changing the reference image preserves it.
 
 This is operator-guided 2D frame correction. It does not detect the object or automatically solve its 3D pose.
 
@@ -98,16 +97,15 @@ Under **Source type**, choose **Live video · WebRTC** and **Start connection se
 
 For a client on the same computer, the default WHIP endpoint is `http://127.0.0.1:19840/whip`. To use HTTPS, set both `HEADINJAR_TLS_CERT` and `HEADINJAR_TLS_KEY` to certificate and key file paths before starting the app. The certificate must cover `127.0.0.1` and be trusted by the client. A missing or unreadable certificate or key prevents the server from starting. The app does not expose the endpoint on a LAN interface.
 
-Live input does not turn on the projector. Select a display and use **Resume** after the stream connects. **Hold** freezes the last projected frame and mutes audio; **Blackout** and **Stop** show black and mute audio. Closing or reopening Output keeps the WebRTC source connected. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. Switching back to **Reference image** replaces the live editor preview with the saved reference image.
+Live input does not turn on the projector. Select a display and click **Start projection** after the stream connects. **Hold** freezes the last projected frame and mutes audio; **Stop projection** returns to black and mutes audio. Closing or reopening Output keeps the WebRTC source connected. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Start projection**. Switching back to **Reference image** replaces the live editor preview with the saved reference image.
 
 ### Output controls
 
 | Control | Effect |
 | --- | --- |
-| **Resume** | Enable live rendering on the confirmed display. |
+| **Choose display** | Select or change the output display. Output opens black. |
+| **Start projection** / **Stop projection** | Start live rendering or return to black. |
 | **Hold** | Freeze the current output frame. |
-| **Blackout** | Show black without closing the output window. |
-| **Stop** | Disarm output and return to black. |
 
 On Linux, the launcher selects X11/XWayland so the output window can be positioned on the selected monitor. Desktop dimensions are logical display dimensions; Render dimensions are the project's frame buffer size. OS scaling can affect physical pixel correspondence.
 

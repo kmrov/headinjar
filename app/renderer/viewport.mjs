@@ -37,8 +37,8 @@ export function createViewport(host, callbacks={}) {
     label.style.display=tool==='align'?'none':'';
     hint.textContent=!hasMesh?'':mode==='projector'?'Projection preview':tool==='align'?'Pick image points · wheel zoom · middle-drag pan · drag markers':tool==='grid'?'Image warp grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
     if(mode==='projector'&&physical.active){
-      label.textContent='Original projector image · point editing';
-      hint.textContent=physical.picking?'Click a landmark on the head':'Drag orange crosshair · arrows 1 px · Shift 10 px';
+      label.textContent='Projector preview';
+      hint.textContent=physical.picking?'Click a point on the model':'Drag points to match the real surface';
       const b=canvas.getBoundingClientRect(),hostBox=host.getBoundingClientRect();
       const at=p=>({x:b.left-hostBox.left+p.u*b.width,y:b.top-hostBox.top+p.v*b.height});
       physical.pairs.forEach((pair,index)=>{

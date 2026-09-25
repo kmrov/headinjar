@@ -37,10 +37,12 @@ try {
   await assert.rejects(invoke('newProject', '   '));
   await invoke('newProject', 'Smoke project');
   assert.equal((await invoke('getSnapshot')).project.name, 'Smoke project');
+  assert.equal(await editor.locator('#import-mesh').isVisible(), true);
   assert.equal(await editor.locator('#reference-source-content').isVisible(), true, 'image controls are visible for the image source');
   assert.equal(await editor.locator('#webrtc-panel').isVisible(), false, 'video controls are hidden for the image source');
   await editor.locator('#source-kind').selectOption('webrtc');
   await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).source.kind === 'webrtc');
+  assert.equal(await editor.locator('#import-mesh').isVisible(), true);
   assert.equal(await editor.locator('#reference-source-content').isVisible(), false, 'image controls hide for WebRTC');
   assert.equal(await editor.locator('#webrtc-panel').isVisible(), true, 'video controls appear for WebRTC');
   await editor.locator('#source-kind').selectOption('reference');
@@ -100,6 +102,7 @@ try {
     },{mesh:meshPath,image:imagePath});
     await editor.locator('#import-mesh').click();
     await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.mesh?.name==='test-plane.obj');
+    assert.equal(await editor.locator('#import-reference').isVisible(), true);
     await editor.waitForTimeout(500);
     await editor.screenshot({scale:'css',path:join(screenshots,'editor-model-lit.png')});
     const preview=await editor.locator('#viewport').boundingBox();
@@ -109,6 +112,8 @@ try {
     await editor.locator('#fit-view').click();
     await editor.locator('#import-reference').click();
     await editor.waitForFunction(async()=>Boolean((await window.desktop.getSnapshot()).referencePreview));
+    assert.match(await editor.locator('#projection-toggle').innerText(), /Choose display/);
+    assert.equal(await editor.locator('#physical-calibration').count(), 1);
     await editor.waitForFunction(()=>document.querySelector('#reference-thumb')?.complete);
     assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0,'mesh replacement resets placement');
     const cameraBefore=(await invoke('getSnapshot')).project.projector;
@@ -117,14 +122,9 @@ try {
     await editor.waitForTimeout(1000);
     assert.equal(await editor.locator('#error-region').innerText(), '');
     await editor.screenshot({scale:'css',path:join(screenshots,'editor-imported-obj.png')});
-    await editor.locator('[data-tool="grid"]').click();
     const box=await editor.locator('#viewport').boundingBox();
     const size=Math.max(100,Math.min(240,box.width-80,box.height-150));
     const x=box.x+box.width-size-36,y=box.y+66;
-    await editor.mouse.move(x+size/2,y+size/2);
-    await editor.mouse.down();await editor.mouse.move(x+size*.52,y+size*.5);await editor.mouse.up();
-    await editor.waitForFunction(async()=>Math.abs((await window.desktop.getSnapshot()).project.placement.grid.points[12].u-.52)<.01);
-    await editor.screenshot({scale:'css',path:join(screenshots,'editor-grid-1488.png')});
     await editor.locator('[data-tool="mask"]').click();
     await editor.locator('#mask-mode').selectOption('exclude');
     await editor.mouse.click(x+size*.2,y+size*.2);

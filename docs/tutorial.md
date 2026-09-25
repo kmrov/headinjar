@@ -35,7 +35,7 @@ For a more accurate fit, choose **Align**. Click a recognizable point on the sou
 
 ![Align tool with paired image and model landmarks](tutorial/assets/alignment-points.png)
 
-To refine the result locally, choose **Grid** and move a control point in the preview. Invalid folds are rejected. Use **Fit source** or **Fit view** if you lose sight of the image or model. This navigation changes the editor view, not the saved mapping.
+Use **Fit source** or **Fit view** if you lose sight of the image or model. This navigation changes the editor view, not the saved mapping.
 
 ## 3. Limit the projection with a mask
 
@@ -45,13 +45,13 @@ A mask controls coverage; it does not align the projector with the physical obje
 
 ## 4. Calibrate the projector
 
-Choose **Projector calibration**. First make a rough adjustment with **Projector camera**, **Model pose**, and **Image offset** so the preview resembles the physical setup. These controls calibrate the projection geometry independently of image placement.
+Choose **Projector calibration**. The visible landmarks from Image placement → Align appear automatically on the model. If there are no landmarks, click **Add point**, then click a recognizable place on the digital model. Add at least three points spread across the surface.
 
-Under **Output display**, click **Choose display**, select the projector, and click **Open black output**. The output window starts black. Check that the selected display is the one connected to the projector before you continue. Keep output black while you prepare. To see the image and calibration cross on the physical object, click **Resume** only when the selected projector and target are ready.
+Click **Choose display** in the bottom bar, select the projector, and click **Open black output**. Check that the selected display is the one connected to the projector. When ready, click **Start projection** in the same place.
 
-For point-by-point physical alignment, open **Projection alignment points**. Click **Use model landmarks** to bring in visible points from Front → Align, or choose **Add point** and click a point on the digital model. Select a numbered point and move its orange target in the preview to match the projected cross on the real object. Use the arrow keys for one output pixel per step; Shift+arrow moves ten pixels. At least three spread-out points are required. Click **Apply alignment** when the points match.
+Select a numbered point. Match its projected cross on the real object by dragging the orange point in the preview. Repeat for the other points, then click **Apply**. To add another point, click **Add point** and pick its place on the digital model.
 
-**Blackout** immediately forces black output; **Stop** also stops projection. **Freeze preview** holds only the editor preview and does not pause the projected output.
+**Hold** freezes the current projected frame; click it again to continue. **Stop projection** turns the output black. **Freeze preview** holds only the editor preview and does not pause the projected output.
 
 ![Projector calibration controls and physical alignment points](tutorial/assets/projector-calibration.png)
 
@@ -59,14 +59,14 @@ This is a manual 2D correction based on what the operator sees. The editor does 
 
 ## 5. Save and reopen
 
-Click the disk icon in the top bar (**Save project**, also available with Ctrl+S). Choose **Open project** later to reopen the saved project. The OBJ data is stored in the project; keep the external reference image available at its saved path. After restart, output remains black and requires an explicit **Resume**.
+Click the disk icon in the top bar (**Save project**, also available with Ctrl+S). Choose **Open project** later to reopen the saved project. The OBJ data is stored in the project; keep the external reference image available at its saved path. After restart, output remains black until you click **Start projection**.
 
 ## Common issues
 
 - **The image does not fit in Model UV:** switch **Mapping** to **Front** unless you have an atlas made for the model's UVs.
-- **The grid folds or flips:** move the affected point back or remove/recreate the alignment pair; invalid grid cells are rejected.
+- **The alignment folds or flips:** move the affected point back or remove/recreate the image alignment pair; invalid correction cells are rejected.
 - **The preview is aligned but the physical projection is not:** use **Projector calibration** and its physical alignment points. Front → Align fits the image to the digital model only.
-- **The projector stays black:** confirm the output display and source, then explicitly click **Resume**. Connecting a live source does not arm projection automatically.
+- **The projector stays black:** confirm the output display and source, then click **Start projection**. Connecting a live source does not start projection automatically.
 - **The reference image is missing after reopening:** restore it to its original path, then reopen or relink it.
 
 For local WebRTC and WHIP input, output controls, project files, and development checks, see the [repository guide](../README.md). The public smoke test uses temporary assets; physical accuracy still requires a run on your own projector and object.

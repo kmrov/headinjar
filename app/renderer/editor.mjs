@@ -24,12 +24,11 @@ const ui = {
   outputStatus: $('#output-status'), outputDetail: $('#output-detail'), outputSwatch: $('#output-swatch'),
   resolution: $('#resolution-status'), canvasTitle: $('#canvas-title'), canvasBadge: $('#canvas-badge'),
   modelPreview: $('.model-preview'), loadedModelMark: $('#loaded-model-mark'),
-  placementPanel: $('#placement-panel'), gridPanel: $('#grid-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
+  placementPanel: $('#placement-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
   alignmentPanel: $('#alignment-panel'), alignmentSource: $('#alignment-source-panel'), mappingMode: $('#mapping-mode'), alignmentModeNote: $('#alignment-mode-note'),
   placementX: $('#placement-x'), placementY: $('#placement-y'), placementScale: $('#placement-scale'), placementRotation: $('#placement-rotation'),
-  gridSelection: $('#grid-selection'), maskCount: $('#mask-count'), maskNote: $('#mask-note'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
-  displaySummary: $('#display-summary'), ctaHint: $('#cta-hint'), review: $('#review-projector'),
-  blackout: $('#blackout'), hold: $('#hold-output'), resume: $('#resume-output'), stop: $('#stop-output'),
+  maskCount: $('#mask-count'), maskNote: $('#mask-note'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
+  hold: $('#hold-output'), projectionToggle: $('#projection-toggle'), changeDisplay: $('#change-display'),
   displayDialog: $('#display-dialog'), displayList: $('#display-list'), confirmDisplay: $('#confirm-display'),
   viewport: $('#viewport'),
   webrtcPreviewCanvas: $('#webrtc-preview-canvas'), webrtcPreviewEmpty: $('#webrtc-preview-empty'),
@@ -41,7 +40,6 @@ let snapshot = null;
 let activeMode = 'placement';
 let activeTool = 'move';
 let maskMode = 'keep';
-let selectedPoint = null;
 let selectedAlignment = null;
 let pendingAlignmentSource = null;
 let alignmentPanel;
@@ -50,7 +48,6 @@ let webrtcPanel;
 let editorWebRTCSource;
 let displays = [];
 let selectedDisplayId = null;
-let showGrid = true;
 let wireframe = false;
 let hasProjectFile = false;
 let savedRevision = -1;
@@ -195,31 +192,30 @@ function setMode(mode) {
     tab.setAttribute('aria-pressed', String(selected));
   });
   ui.placementPanel.hidden = projector;
-  ui.gridPanel.hidden = projector;
   ui.maskPanel.hidden = projector;
   ui.projectorPanel.hidden = !projector;
   ui.alignmentSource.hidden = projector || activeTool !== 'align';
   ui.alignmentPanel.hidden = projector || activeTool !== 'align';
   ui.placementPanel.hidden = projector || activeTool === 'align';
-  ui.gridPanel.hidden = projector || activeTool === 'align';
   ui.maskPanel.hidden = projector || activeTool === 'align';
   $('#mapping-mode').closest('.mapping-mode-control').hidden = projector;
   $('#mapping-uv-note').hidden=projector||snapshot?.project?.placement?.mappingMode!=='uv';
   ui.canvasTitle.textContent = projector ? 'Projector preview' : 'Model preview';
   ui.canvasBadge.textContent = projector ? 'Calibration' : 'Placement';
   ui.viewport.setAttribute('aria-label', projector ? 'Projector calibration preview' : '3D model and image placement preview');
+  $('.viewport-controls').hidden = projector;
+  $('.status-meta').hidden = projector;
   $$('.tool-switch').forEach((toolbar) => { toolbar.hidden = projector; });
   if (viewportApi) {viewportApi.setMode(activeMode);viewportApi.setTextureOpacity(!projector&&activeTool==='align'?Number($('#texture-opacity').value):1);}
   renderAlignment();
-  updateCta();
 }
 
 function setTool(tool) {
   pendingAlignmentSource=null;
-  activeTool = ['move', 'grid', 'mask', 'align'].includes(tool) ? tool : 'move';
+  activeTool = ['move', 'mask', 'align'].includes(tool) ? tool : 'move';
   if (snapshot?.project?.placement?.mappingMode === 'uv' && activeTool !== 'move') {
     activeTool = 'move';
-    showFeedback('Switch to Front mapping to use Align, Grid, or Mask tools.');
+    showFeedback('Switch to Front mapping to use Align or Mask tools.');
   }
   $$('.tool-button').forEach((button) => {
     const selected = button.dataset.tool === activeTool;
@@ -231,14 +227,12 @@ function setTool(tool) {
   ui.alignmentPanel.hidden = activeMode !== 'placement' || activeTool !== 'align';
   $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
   ui.placementPanel.hidden = activeMode === 'projector' || activeTool === 'align';
-  ui.gridPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.maskPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   if (activeTool === 'align') {
     viewportApi?.fit();
     if (snapshot?.project?.placement?.mappingMode === 'uv') showFeedback('Switch to Front mapping to place landmarks.');
     else showFeedback('Click a point on the image, then the matching point on the model.');
   }
-  else if (activeTool === 'grid' && selectedPoint === null) showFeedback('Select a point on the control grid to edit it.');
   else if (activeTool === 'mask') showFeedback(maskMode === 'exclude'
     ? 'Click around the surface to draw an excluded area, then double-click to finish.'
     : 'Click around the surface to draw the visible area, then double-click to finish.');
@@ -307,25 +301,10 @@ function renderProject(project) {
   ui.maskNote.textContent = mask.length ? `${mask.length} mask ${mask.length === 1 ? 'region' : 'regions'} defined on the surface.` : maskMode === 'exclude' ? 'Use the Mask tool to draw areas to exclude from projection.' : 'Use the Mask tool to draw the area to keep visible on the surface.';
   ui.clearMask.disabled = mask.length === 0;
 
-  renderProjector(project.projector);
   $('#resolution-status').textContent = `${project.output.width} × ${project.output.height}`;
   ui.sourceHealth.classList.toggle('is-ready', Boolean(snapshot?.source?.connected));
   if (viewportApi) viewportApi.setSnapshot(snapshot);
   renderAlignment(project);
-}
-
-function renderProjector(projector) {
-  if (!projector) return;
-  $('#projector-fov').value = formatNumber(projector.fov, 1);
-  ['x', 'y', 'z'].forEach((axis, index) => {
-    $(`#projector-${axis}`).value = formatNumber(projector.position[index], 3);
-    $(`#camera-r${axis}`).value = formatNumber(projector.rotation[index], 2);
-    $(`#model-${axis}`).value = formatNumber(projector.model.position[index], 3);
-    $(`#model-r${axis}`).value = formatNumber(projector.model.rotation[index], 2);
-  });
-  $('#projector-offset-x').value = formatNumber(projector.offset[0], 3);
-  $('#projector-offset-y').value = formatNumber(projector.offset[1], 3);
-  $('#model-scale').value = formatNumber(projector.model.scale, 3);
 }
 
 function renderOutput(state, source) {
@@ -339,9 +318,6 @@ function renderOutput(state, source) {
   const output = state || {};
   const mode = snapshot?.mode || (output.blackout || !output.armed ? 'black' : output.hold ? 'held' : 'live');
   const isBlackout = Boolean(output.blackout);
-  ui.blackout.classList.toggle('is-active', isBlackout);
-  ui.blackout.setAttribute('aria-pressed', String(isBlackout));
-  ui.blackout.innerHTML = `<i class="ph ${isBlackout ? 'ph-sun' : 'ph-moon'}" aria-hidden="true"></i><span>${isBlackout ? 'Blackout on' : 'Blackout'}</span>`;
   const states = {
     black: [isBlackout ? 'Blackout active' : 'Output black', output.armed ? 'Blackout is holding output black' : 'Projector not armed', 'black'],
     held: ['Frame held', 'Output holding the last frame', 'held'],
@@ -352,18 +328,21 @@ function renderOutput(state, source) {
   ui.outputDetail.textContent = outputDetail;
   ui.outputSwatch.dataset.state = outputKind;
   const ready = outputReady(output);
-  ui.resume.disabled = !ready || Boolean(output.armed);
-  ui.resume.title = ready ? (output.armed ? 'Output is already armed' : 'Resume projection') : 'Connect a running source and confirm a display first';
+  const needsDisplay = !snapshot?.displayId;
+  ui.changeDisplay.hidden = needsDisplay;
+  ui.projectionToggle.disabled = !needsDisplay && !output.armed && !ready;
+  const projectionLabel = needsDisplay ? 'Choose display' : output.armed ? 'Stop projection' : 'Start projection';
+  const projectionIcon = needsDisplay ? 'ph-monitor' : output.armed ? 'ph-stop' : 'ph-play';
+  ui.projectionToggle.innerHTML = `<i class="ph ${projectionIcon}" aria-hidden="true"></i>${projectionLabel}`;
+  ui.projectionToggle.title = ui.projectionToggle.disabled ? 'Connect a running source before starting projection' : projectionLabel;
   ui.hold.disabled = !ready || !output.armed;
   ui.hold.title = ui.hold.disabled ? 'Source must be running and output armed' : output.hold ? 'Release held frame' : 'Hold the current frame';
   ui.hold.innerHTML = `<i class="ph ${output.hold ? 'ph-play' : 'ph-pause'}" aria-hidden="true"></i>${output.hold ? 'Release hold' : 'Hold'}`;
-  ui.stop.disabled = !output.armed && !output.hold;
   $('#reference-thumb').dataset.sourceStatus = health;
   const incoming = Number.isFinite(source?.incomingFps) ? `${source.incomingFps.toFixed(1)} fps` : '— fps';
   const presented = Number.isFinite(output.presentedFps) ? `${output.presentedFps.toFixed(1)} fps` : '— fps';
   $('#incoming-fps').textContent = incoming;
   $('#presented-fps').textContent = presented;
-  updateCta();
 }
 
 function renderSnapshot(next) {
@@ -387,7 +366,6 @@ function renderSnapshot(next) {
   lastSnapshotError = snapshot.error || null;
   const currentDisplay = snapshot.displayId || snapshot.project?.output?.displayId;
   if (currentDisplay) selectedDisplayId = String(currentDisplay);
-  renderDisplaySummary();
 }
 
 function formatNumber(value, decimals = 2) {
@@ -416,20 +394,17 @@ function renderAlignment(project = snapshot?.project) {
   const uv = mappingMode === 'uv';
   $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
   ui.alignmentModeNote.textContent = uv
-    ? 'Model UV maps the full texture atlas. Align, Grid, Mask, and image transform controls apply to Front mapping only.'
+    ? 'Model UV maps the full texture atlas. Align, Mask, and image transform controls apply to Front mapping only.'
     : 'Pair matching points on the image and model. Use at least three landmarks.';
-  $$('.tool-button[data-tool="grid"], .tool-button[data-tool="mask"], .tool-button[data-tool="align"]').forEach((button) => {
+  $$('.tool-button[data-tool="mask"], .tool-button[data-tool="align"]').forEach((button) => {
     button.disabled = uv;
     button.title = uv ? 'Available in Front mapping' : '';
   });
   ui.placementPanel.classList.toggle('is-uv-disabled', uv);
   [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation, $('#reset-placement')].forEach((control) => { control.disabled = uv; });
-  ui.gridPanel.classList.toggle('is-uv-disabled', uv);
   ui.maskPanel.classList.toggle('is-uv-disabled', uv);
   if (uv && activeTool !== 'move') setTool('move');
   alignmentPanel.render({ snapshot, pairs: placement.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: mappingMode });
-  const dimensions = placement.grid;
-  $('#grid-dimensions').textContent = dimensions ? `${dimensions.columns} × ${dimensions.rows} control points` : 'Control grid';
 }
 
 async function commitAlignmentPairs(pairs, apply = false) {
@@ -454,31 +429,6 @@ function placementValueFromInputs() {
 function commitPlacement() {
   if (!snapshot?.project) return;
   return safely(() => editProject({ type: 'placement-transform', value: placementValueFromInputs() }));
-}
-
-function vectorFromInputs(prefix, fields, separator = '-') {
-  return fields.map((field) => number($(`#${prefix}${separator}${field}`).value, `${prefix} ${field.toUpperCase()}`));
-}
-
-function commitProjector() {
-  if (!snapshot?.project?.projector) return;
-  return safely(() => {
-    const previous = snapshot.project.projector;
-    const value = {
-      ...(previous.calibration ? { calibration: previous.calibration } : {}),
-      position: vectorFromInputs('projector', ['x', 'y', 'z']),
-      rotation: vectorFromInputs('camera-r', ['x', 'y', 'z'], ''),
-      fov: number($('#projector-fov').value, 'Field of view'),
-      offset: [number($('#projector-offset-x').value, 'Image offset X'), number($('#projector-offset-y').value, 'Image offset Y')],
-      model: {
-        position: vectorFromInputs('model', ['x', 'y', 'z']),
-        rotation: vectorFromInputs('model-r', ['x', 'y', 'z'], ''),
-        scale: number($('#model-scale').value, 'Model scale'),
-      },
-    };
-    if (JSON.stringify(value) === JSON.stringify(previous)) return null;
-    return editProject({ type: 'projector', value });
-  });
 }
 
 async function saveProject() {
@@ -534,29 +484,8 @@ async function importFile(method) {
   });
 }
 
-async function toggleBlackout() {
-  await safely(() => callDesktop('outputAction', { type: 'blackout', enabled: !snapshot?.output?.blackout }));
-}
-
 async function outputAction(type, enabled) {
   await safely(() => callDesktop('outputAction', enabled === undefined ? { type } : { type, enabled }));
-}
-
-function renderDisplaySummary() {
-  if (!snapshot) return;
-  const activeId = snapshot.displayId || snapshot.project?.output?.displayId;
-  const display = displays.find((item) => String(item.id) === String(activeId));
-  if (!activeId) {
-    ui.displaySummary.innerHTML = '<i class="ph ph-monitor" aria-hidden="true"></i><span>No display selected</span>';
-    return;
-  }
-  const dimensions = `${snapshot.project.output.width} × ${snapshot.project.output.height}`;
-  const name = display ? `Display ${displays.indexOf(display) + 1}${display.primary ? ' · Primary' : ''}` : `Display ${activeId}`;
-  ui.displaySummary.innerHTML = `<i class="ph ph-monitor" aria-hidden="true"></i><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(dimensions)} px</small></span>`;
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
 async function openDisplayDialog() {
@@ -596,26 +525,9 @@ async function confirmDisplay() {
   await safely(async () => {
     await callDesktop('openOutput', displayId);
     ui.displayDialog.close();
-    showFeedback('Output opened black. Click Resume to project the loaded reference image.');
+    showFeedback('Output opened black. Click Start projection when ready.');
   });
   ui.confirmDisplay.disabled = false;
-}
-
-function updateCta() {
-  if (!snapshot) return;
-  const project = snapshot.project || {};
-  const needsModel = !project.mesh;
-  const needsImage = snapshot.source?.kind !== 'webrtc' && !snapshot.referencePreview;
-  const needsVideo = snapshot.source?.kind === 'webrtc' && snapshot.source?.status !== 'running';
-  const hasDisplay = Boolean(snapshot.displayId);
-  const step = needsModel ? ['Import model', 'Start with the OBJ of the physical surface.', 'ph-cube']
-    : needsImage ? ['Add reference image', 'Add the image you will fit on the model.', 'ph-image-square']
-      : needsVideo ? ['Connect video', 'Connect the sender to preview its image.', 'ph-video-camera']
-        : !hasDisplay ? ['Choose display', 'Select the projector display. It opens black.', 'ph-monitor']
-          : ['Calibrate projector', 'Align the preview with the physical surface.', 'ph-crosshair'];
-  ui.ctaHint.textContent = step[1];
-  ui.review.querySelector('span').textContent = step[0];
-  ui.review.querySelector('i').className = `ph ${step[2]}`;
 }
 
 function bindEvents() {
@@ -626,10 +538,16 @@ function bindEvents() {
   $('#redo-project').addEventListener('click', () => safely(() => callDesktop('redo')));
   $('#import-mesh').addEventListener('click', () => importFile('importMesh'));
   $('#import-reference').addEventListener('click', () => importFile('importReference'));
-  ui.blackout.addEventListener('click', toggleBlackout);
   ui.hold.addEventListener('click', () => outputAction('hold', !snapshot?.output?.hold));
-  ui.resume.addEventListener('click', () => outputAction('resume'));
-  ui.stop.addEventListener('click', () => outputAction('stop'));
+  ui.changeDisplay.addEventListener('click', openDisplayDialog);
+  ui.projectionToggle.addEventListener('click', () => {
+    if (!snapshot?.displayId) return openDisplayDialog();
+    if (snapshot.output?.armed) return outputAction('stop');
+    return safely(async () => {
+      if (snapshot.output?.blackout) await callDesktop('outputAction', { type: 'blackout', enabled: false });
+      await callDesktop('outputAction', { type: 'resume' });
+    });
+  });
   $('#mode-placement').addEventListener('click', () => setMode('placement'));
   $('#mode-projector').addEventListener('click', () => setMode('projector'));
   $$('.tool-button').forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool)));
@@ -663,7 +581,6 @@ function bindEvents() {
     });
   });
   [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation].forEach((input) => input.addEventListener('change', commitPlacement));
-  $$('#projector-panel input').forEach((input) => input.addEventListener('change', commitProjector));
   $('#reset-placement').addEventListener('click', () => safely(() => editProject({ type: 'reset-placement' }, 'Image placement reset.')));
   ui.clearMask.addEventListener('click', () => safely(() => editProject({ type: 'mask', value: [] }, 'Coverage mask cleared.')));
   ui.maskMode.addEventListener('change', (event) => {
@@ -673,39 +590,16 @@ function bindEvents() {
       ? `${snapshot.project.placement.mask.length} mask ${snapshot.project.placement.mask.length === 1 ? 'region' : 'regions'} defined on the surface.`
       : maskMode === 'exclude' ? 'Use the Mask tool to draw areas to exclude from projection.' : 'Use the Mask tool to draw the area to keep visible on the surface.';
   });
-  $('#toggle-grid').addEventListener('click', (event) => {
-    showGrid = !showGrid;
-    event.currentTarget.setAttribute('aria-pressed', String(showGrid));
-    event.currentTarget.title = showGrid ? 'Hide grid' : 'Show grid';
-    viewportApi?.setGridVisibility(showGrid);
-  });
   $('#wireframe').addEventListener('click', (event) => {
     wireframe = !wireframe;
     event.currentTarget.setAttribute('aria-pressed', String(wireframe));
     viewportApi?.setWireframe(wireframe);
   });
   $('#fit-view').addEventListener('click', () => viewportApi?.fit());
-  $('#choose-display').addEventListener('click', openDisplayDialog);
-  ui.review.addEventListener('click', () => {
-    if (!snapshot?.project?.mesh) return importFile('importMesh');
-    if (snapshot.source?.kind !== 'webrtc' && !snapshot.referencePreview) return importFile('importReference');
-    if (snapshot.source?.kind === 'webrtc' && snapshot.source?.status !== 'running') {
-      $('.source-rail').scrollTo({ top: $('.source-section').offsetTop, behavior: 'smooth' });
-      const target = snapshot.signaling?.running ? $('#signaling-copy') : $('#signaling-start');
-      target.focus();
-      return;
-    }
-    setMode('projector');
-    if (!snapshot.displayId) openDisplayDialog();
-  });
   $('#cancel-display').addEventListener('click', () => ui.displayDialog.close());
   ui.confirmDisplay.addEventListener('click', confirmDisplay);
   document.addEventListener('keydown', (event) => {
     if (isFieldFocused() || event.altKey) return;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
-      event.preventDefault();
-      toggleBlackout();
-    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
       saveProject();
@@ -763,12 +657,6 @@ try {
         }
       });
     },
-    onSelection: (index) => {
-      selectedPoint = index;
-      ui.gridSelection.innerHTML = index === null || index === undefined
-        ? '<i class="ph ph-cursor-click" aria-hidden="true"></i><span>Select a grid point in the viewport</span>'
-        : `<i class="ph ph-crosshair" aria-hidden="true"></i><span>Point ${Number(index) + 1} selected</span>`;
-    },
     onError: reportError,
   });
 } catch (error) {
@@ -803,7 +691,7 @@ bindEvents();
 setMode(activeMode);
 if (viewportApi) {
   viewportApi.setTool(activeTool);
-  viewportApi.setGridVisibility(showGrid);
+  viewportApi.setGridVisibility(false);
   viewportApi.setWireframe(wireframe);
   viewportApi.setMaskExcluded(maskMode === 'exclude');
 }

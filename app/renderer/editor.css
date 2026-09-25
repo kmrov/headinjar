@@ -33,7 +33,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 ::selection { color: #0b1510; background: var(--mint); }
 
 .app-shell { display: grid; width: 100%; height: 100%; min-height: 760px; grid-template-rows: 70px minmax(0, 1fr) 70px; }
-.topbar { z-index: 5; display: grid; grid-template-columns: 152px minmax(355px, 1fr) minmax(340px, auto) 142px; align-items: center; gap: 0; padding: 0 24px 0 29px; background: #171a1d; border-bottom: 1px solid var(--border); }
+.topbar { z-index: 5; display: grid; grid-template-columns: 152px minmax(355px, 1fr) minmax(340px, auto); align-items: center; gap: 0; padding: 0 24px 0 29px; background: #171a1d; border-bottom: 1px solid var(--border); }
 .brand { display: inline-flex; width: fit-content; align-items: center; color: #f1f3f2; text-decoration: none; font-size: 16px; font-weight: 600; letter-spacing: .16em; line-height: 1; white-space: nowrap; }
 .project-tools { display: flex; height: 36px; align-items: center; gap: 15px; min-width: 0; padding: 0 22px 0 18px; border-right: 1px solid var(--border); }
 .project-name-wrap { color: var(--text-muted); font-size: 12px; }
@@ -286,6 +286,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .status-source > div, .status-output > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .statusbar strong { overflow: hidden; color: #cad0cd; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .statusbar small { overflow: hidden; color: #7f8985; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.status-change-display { width: fit-content; padding: 0; color: #96c9aa; border: 0; background: transparent; font-size: 9px; }
+.status-change-display:hover { text-decoration: underline; }
+.status-change-display[hidden] { display: none; }
 .status-divider { align-self: stretch; width: 1px; max-height: 34px; margin: auto 0; background: #343a3d; }
 .output-swatch { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #48514e; border-radius: 3px; background: #050606; }
 .output-swatch[data-state="live"] { border-color: #4a7a5c; background: #183321; }
@@ -325,7 +328,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 
 @media (max-width: 1360px) {
-  .topbar { grid-template-columns: 130px minmax(310px, 1fr) minmax(300px, auto) 132px; padding-right: 17px; padding-left: 22px; }
+  .topbar { grid-template-columns: 130px minmax(310px, 1fr) minmax(300px, auto); padding-right: 17px; padding-left: 22px; }
   .project-tools { gap: 10px; padding-right: 13px; padding-left: 12px; }
   .project-name { width: 130px; }
   .workspace { grid-template-columns: 250px minmax(430px, 1fr) 320px; }
@@ -367,15 +370,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .physical-calibration button { min-height: 32px; padding: 5px 9px; color: #d6e1d9; border: 1px solid #46554b; border-radius: 4px; background: #202b24; font-size: 11px; transition: border-color .15s ease, background .15s ease; }
 .physical-calibration button:hover:not(:disabled) { border-color: #83b497; background: #293b2f; }
 .physical-calibration button:disabled { color: #78847d; border-color: #38413c; background: #222824; cursor: not-allowed; }
-.physical-calibration button.is-selected, #physical-edit[aria-pressed="true"] { color: #202213; border-color: #e8c981; background: #e8c981; }
+.physical-calibration button.is-selected { color: #202213; border-color: #e8c981; background: #e8c981; }
 .physical-pairs button { min-width: 32px; padding: 5px; border-radius: 50%; }
-.physical-target { display: flex; gap: 8px; margin-top: 12px; }
-.physical-target label { min-width: 0; flex: 1; color: #bfc9c3; font-size: 11px; }
-.physical-target input { width: 100%; height: 34px; margin-top: 6px; padding: 0 9px; color: #e3e8e5; border: 1px solid #343b3f; border-radius: 4px; background: #131719; font-size: 12px; }
-.physical-target input:disabled { color: #79847e; background: #1b201d; }
-.physical-nudge { justify-content: center; gap: 5px; }
-.physical-nudge button { min-width: 33px; font-size: 16px; }
 #physical-apply:not(:disabled) { color: var(--mint-ink); border-color: var(--mint); background: var(--mint); font-weight: 600; }
+.viewport-controls[hidden], .status-meta[hidden] { display: none; }
 
 /* Keep the working labels legible beside the viewport, including at 1280 px. */
 .section-heading h2, .inspector-title-row h2, .physical-calibration h2 { font-size: 12px; }
