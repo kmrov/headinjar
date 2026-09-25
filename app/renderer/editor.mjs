@@ -206,7 +206,6 @@ function setMode(mode) {
   pendingAlignmentSource=null;
   activeMode = mode === 'projector' ? 'projector' : 'placement';
   const projector = activeMode === 'projector';
-  physicalCalibration?.setVisible(projector);
   $$('.mode-tab').forEach((tab) => {
     const selected = tab.dataset.mode === activeMode;
     tab.classList.toggle('is-active', selected);
@@ -228,6 +227,7 @@ function setMode(mode) {
   $('.status-meta').hidden = projector;
   $$('.tool-switch').forEach((toolbar) => { toolbar.hidden = projector; });
   if (viewportApi) {viewportApi.setMode(activeMode);viewportApi.setTextureOpacity(!projector&&activeTool==='align'?Number($('#texture-opacity').value):1);}
+  physicalCalibration?.setVisible(projector);
   renderAlignment();
 }
 

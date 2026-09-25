@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProject } from '../src/project/model.mjs';
 import { createHistory, editHistory, redoHistory, undoHistory } from '../src/project/history.mjs';
+import { createGrid } from '../src/mapping/grid.mjs';
 
 const time = (second = 0) => new Date(Date.parse('2026-09-24T12:00:00.000Z') + second * 1000).toISOString();
 const project = () => createProject({ id: 'head-1', name: 'Head', now: time() });
@@ -223,6 +224,24 @@ test('calibration reset upgrades a legacy projector without changing old-file pa
     pairs: [],
     grid: { columns: 2, rows: 2, points: [{ u: 0, v: 0 }, { u: 1, v: 0 }, { u: 0, v: 1 }, { u: 1, v: 1 }] },
   });
+});
+
+test('recreating projector points from Align replaces old pairs and warp in one undo step', () => {
+  const oldPairs = [
+    { source: { u: 0.1, v: 0.1 }, target: { u: 0.15, v: 0.1 } },
+    { source: { u: 0.8, v: 0.1 }, target: { u: 0.85, v: 0.1 } },
+    { source: { u: 0.1, v: 0.8 }, target: { u: 0.15, v: 0.8 } },
+  ];
+  const newPairs = [
+    { source: { u: 0.25, v: 0.3 }, target: { u: 0.25, v: 0.3 } },
+    { source: { u: 0.7, v: 0.3 }, target: { u: 0.7, v: 0.3 } },
+  ];
+  const before = edit(createHistory(project()), { type: 'calibration-apply', value: oldPairs });
+  const after = edit(before, { type: 'calibration-reseed', value: newPairs });
+  assert.deepEqual(after.project.projector.calibration.pairs, newPairs);
+  assert.deepEqual(after.project.projector.calibration.grid, createGrid(2, 2));
+  assert.deepEqual(undoHistory(after, time(3)).project.projector.calibration, before.project.projector.calibration);
+  assert.throws(() => edit(before, { type: 'calibration-reseed', value: [{ source: { u: -1, v: 0 }, target: { u: 0, v: 0 } }] }), RangeError);
 });
 
 test('invalid calibration edits reject atomically and geometry changes reset calibration', () => {

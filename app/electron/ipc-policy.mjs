@@ -33,6 +33,7 @@ export function isValidProjectEditCommand(command) {
     'alignment-apply': ['type', 'value'],
     'calibration-pairs': ['type', 'value'],
     'calibration-apply': ['type', 'value'],
+    'calibration-reseed': ['type', 'value'],
     'calibration-reset': ['type'],
     'mapping-mode': ['type', 'value'],
     'reset-placement': ['type'],
@@ -55,7 +56,7 @@ export function isValidProjectEditCommand(command) {
   if (type === 'alignment-pairs' || type === 'alignment-apply') {
     return validLandmarkPairs(readData(command, 'value'), type === 'alignment-apply' ? 3 : 0);
   }
-  if (type === 'calibration-pairs' || type === 'calibration-apply') {
+  if (type === 'calibration-pairs' || type === 'calibration-apply' || type === 'calibration-reseed') {
     return validLandmarkPairs(readData(command, 'value'), type === 'calibration-apply' ? 3 : 0);
   }
   if (type === 'mapping-mode') return ['front', 'uv'].includes(readData(command, 'value'));

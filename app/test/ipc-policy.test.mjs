@@ -108,9 +108,11 @@ test('validates exact physical calibration commands over IPC', () => {
   assert.equal(isValidProjectEditCommand({ type: 'calibration-pairs', value: [] }), true);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-pairs', value: pairs }), true);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-apply', value: pairs }), true);
+  assert.equal(isValidProjectEditCommand({ type: 'calibration-reseed', value: pairs }), true);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-reset' }), true);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-apply', value: pairs.slice(0, 2) }), false);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-pairs', value: pairs, extra: true }), false);
+  assert.equal(isValidProjectEditCommand({ type: 'calibration-reseed', value: [{ source: { u: 2, v: 0 }, target: { u: 0, v: 0 } }] }), false);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-reset', value: null }), false);
   assert.equal(isValidProjectEditCommand({ type: 'calibration-pairs', value: [{ source: { u: NaN, v: 0 }, target: { u: 0, v: 0 } }] }), false);
 });

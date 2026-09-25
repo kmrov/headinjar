@@ -113,6 +113,10 @@ function applyCommand(project, command) {
       ensureCalibration(project.projector).pairs = command.value;
       ensureCalibration(project.projector).grid = fitLandmarkGrid(command.value, 33, 33);
       break;
+    case 'calibration-reseed':
+      resetCalibration(project.projector);
+      project.projector.calibration.pairs = command.value;
+      break;
     case 'calibration-reset':
       resetCalibration(project.projector);
       break;
@@ -180,6 +184,7 @@ function validateCommand(command) {
     'alignment-apply': ['type', 'value'],
     'calibration-pairs': ['type', 'value'],
     'calibration-apply': ['type', 'value'],
+    'calibration-reseed': ['type', 'value'],
     'calibration-reset': ['type'],
     'mapping-mode': ['type', 'value'],
     'reset-placement': ['type'],
@@ -204,7 +209,7 @@ function validateCommand(command) {
   if (typeDescriptor.value === 'alignment-pairs' || typeDescriptor.value === 'alignment-apply') {
     validateLandmarkPairs(readDataProperty(command, 'value'), typeDescriptor.value === 'alignment-apply' ? 3 : 0);
   }
-  if (typeDescriptor.value === 'calibration-pairs' || typeDescriptor.value === 'calibration-apply') {
+  if (typeDescriptor.value === 'calibration-pairs' || typeDescriptor.value === 'calibration-apply' || typeDescriptor.value === 'calibration-reseed') {
     validateLandmarkPairs(readDataProperty(command, 'value'), typeDescriptor.value === 'calibration-apply' ? 3 : 0);
   }
   if (typeDescriptor.value === 'mapping-mode' && !['front', 'uv'].includes(readDataProperty(command, 'value'))) {

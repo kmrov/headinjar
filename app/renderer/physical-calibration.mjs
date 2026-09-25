@@ -12,6 +12,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
     <p id="physical-status" role="status"></p>
     <div class="physical-actions">
       <button id="physical-add" type="button">Add point</button>
+      <button id="physical-reseed" type="button" title="Replace projector points and correction with current Align points. Undo restores them.">Recreate from Align</button>
       <button id="physical-apply" type="button">Apply</button>
     </div>`;
   parent.append(root);
@@ -35,6 +36,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
     if (selected !== null && !current[selected]) selected = current.length ? current.length - 1 : null;
     const hasMesh = Boolean(snapshot?.project.mesh);
     q('#physical-add').disabled = !hasMesh || current.length >= 12 || pending;
+    q('#physical-reseed').disabled = !hasMesh || !(snapshot?.project.placement.alignment?.pairs?.length) || pending;
     q('#physical-apply').disabled = current.length < 3 || pending;
     q('#physical-status').textContent = picking
       ? 'Click a new point on the model in the preview.'
@@ -100,6 +102,14 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
   }
 
   q('#physical-add').addEventListener('click', () => { picking = true; render(); });
+  q('#physical-reseed').addEventListener('click', () => {
+    const landmarks = getLandmarks().slice(0, 12);
+    if (!landmarks.length) return onError(new Error('No Align points are visible in the projector preview.'));
+    draft = landmarks.map(source => ({ source, target: { ...source } }));
+    selected = 0;
+    picking = false;
+    return commit({ type: 'calibration-reseed', value: draft });
+  });
   q('#physical-apply').addEventListener('click', () => commit({ type: 'calibration-apply', value: pairs() }, { clearSelection: true }));
   return {
     render(value) {
