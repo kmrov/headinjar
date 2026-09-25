@@ -22,7 +22,11 @@ Electron · Three.js · JavaScript
 - Control the second display with **Resume**, **Hold**, **Blackout**, and **Stop**.
 - Save your project, recover an interrupted session, and undo or redo edits.
 
-This is still early software. You can use static images or one live WebRTC source, but there are no packaged installers yet. The desktop setup tested so far is Linux with X11/XWayland. Other platforms have not been verified.
+This is still early software. You can use static images or one live WebRTC source. The desktop setup tested so far is Linux with X11/XWayland; packaged macOS builds still need a real-device check.
+
+## Downloads
+
+Versioned builds are published on the [Releases page](https://github.com/kmrov/headinjar/releases): AppImage and `.deb` for Linux x64, plus `.dmg` and `.zip` for both Intel and Apple Silicon Macs. Bring your own OBJ and image; no model or texture is bundled. macOS builds are currently unsigned and unnotarized. If macOS blocks one you trust, follow [Apple's Open Anyway instructions](https://support.apple.com/en-us/102445). Physical projector behavior on macOS still needs a real-device check.
 
 ## Get started 🚀
 
@@ -121,3 +125,14 @@ app/
 ```
 
 The renderer uses Three.js; desktop integration uses Electron. Fonts and icons are supplied by Inter and Phosphor npm packages. Dependencies retain their respective licenses. No open-source license is granted for this project at this time.
+
+### Publish a release
+
+The [release workflow](.github/workflows/release.yml) runs when a version tag such as `v0.1.0` is pushed. It sets the package version from the tag, runs tests, builds Linux and macOS packages, and publishes the GitHub Release only after all six packages are available. To publish the next version from the public checkout:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Use a new `vMAJOR.MINOR.PATCH` tag for each release. Regular pushes to `main` build all three platforms and keep packages as temporary Actions artifacts; they do not create releases. To check Linux packaging locally, run `npm run build` and `npm run package -- --linux --x64` from `app/`; package files appear in ignored `app/release/`. macOS packaging runs on GitHub's macOS runners. Installing a Developer ID certificate and enabling signing/notarization is a separate release step; the current macOS packages do not claim those protections.

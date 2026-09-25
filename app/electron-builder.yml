@@ -1,0 +1,29 @@
+appId: ru.kmrov.headinjar
+productName: Head in Jar
+artifactName: Head-in-Jar-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+asar: true
+files:
+  - dist/**/*
+  - electron/**/*
+  - renderer/*.html
+  - renderer/*.css
+  - src/**/*
+  - examples/**/*
+  - package.json
+  - '!dist/**/*.map'
+linux:
+  category: Graphics
+  maintainer: Nikita Komarov <nikita@kmrov.ru>
+  syncDesktopName: true
+  executableArgs:
+    - --ozone-platform=x11
+  target:
+    - AppImage
+    - deb
+mac:
+  identity: null
+  target:
+    - dmg
+    - zip

@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x64
+            artifact: linux-x64
+          - name: macOS Intel
+            os: macos-15-intel
+            platform: mac
+            arch: x64
+            artifact: mac-x64
+          - name: macOS Apple Silicon
+            os: macos-15
+            platform: mac
+            arch: arm64
+            artifact: mac-arm64
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Set package version from tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tags must look like v1.2.3" >&2
+              exit 1
+            fi
+            npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          fi
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Package
+        run: npm run package -- --${{ matrix.platform }} --${{ matrix.arch }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.artifact }}
+          path: |
+            app/release/*.AppImage
+            app/release/*.deb
+            app/release/*.dmg
+            app/release/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+      - name: Verify and publish all six packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="${GITHUB_REF_NAME#v}"
+          expected=(
+            release-linux-x64:AppImage
+            release-linux-x64:deb
+            release-mac-x64:dmg
+            release-mac-x64:zip
+            release-mac-arm64:dmg
+            release-mac-arm64:zip
+          )
+          files=()
+          for spec in "${expected[@]}"; do
+            directory="${spec%%:*}"
+            extension="${spec#*:}"
+            matches=(release-assets/"$directory"/*."$extension")
+            if [[ ${#matches[@]} -ne 1 || ! -s "${matches[0]:-}" ]]; then
+              echo "Expected one nonempty .$extension in $directory" >&2
+              exit 1
+            fi
+            if [[ "$(basename "${matches[0]}")" != Head-in-Jar-"$version"-* ]]; then
+              echo "Package version does not match tag: ${matches[0]}" >&2
+              exit 1
+            fi
+            files+=("${matches[0]}")
+          done
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --verify-tag --title "Head in Jar $GITHUB_REF_NAME" \
+              --notes "macOS packages are currently unsigned and may require manual approval in System Settings → Privacy & Security." \
+              --generate-notes
+          fi
