@@ -21,7 +21,12 @@ models/
 
 # Local working notes
 tasks/
-docs/
+docs/*
+!docs/tutorial.md
+!docs/tutorial/
+docs/tutorial/*
+!docs/tutorial/assets/
+!docs/tutorial/assets/*
 AGENTS.md
 .agents/
 .codex/

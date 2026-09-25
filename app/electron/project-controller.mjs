@@ -155,7 +155,7 @@ export function createProjectController({
     const request = ++openRequest;
     const selected = await dialog.showOpenDialog(getOwnerWindow(), {
       title: 'Open project', properties: ['openFile'],
-      filters: [{ name: 'Mapping project', extensions: ['json'] }],
+      filters: [{ name: 'Head in Jar project', extensions: ['json'] }],
     });
     if (request !== openRequest || token !== generation || selected.canceled || !selected.filePaths?.[0]) return { canceled: true };
     const selectedPath = selected.filePaths[0];
@@ -183,7 +183,7 @@ export function createProjectController({
     const request = ++saveRequest;
     const selected = await dialog.showSaveDialog(getOwnerWindow(), {
       title: 'Save project', defaultPath: `${currentProject().name}.mapping.json`,
-      filters: [{ name: 'Mapping project', extensions: ['json'] }],
+      filters: [{ name: 'Head in Jar project', extensions: ['json'] }],
     });
     if (request !== saveRequest || token !== generation || selected.canceled || !selected.filePath) return { canceled: true };
     const path = selected.filePath;

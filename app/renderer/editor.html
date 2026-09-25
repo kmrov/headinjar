@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob:; object-src 'none'; base-uri 'none'">
-    <title>Mapping — Projection editor</title>
+    <title>Head in Jar — Projection editor</title>
     <link rel="stylesheet" href="../dist/editor.css">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <span class="brand" aria-label="Mapping">MAPPING</span>
+        <span class="brand" aria-label="Head in Jar">HEAD IN JAR</span>
         <div class="project-tools">
           <label class="project-name-wrap" for="project-name">Project</label>
           <input id="project-name" class="project-name" aria-label="Project name" readonly value="Untitled project">
@@ -29,7 +29,6 @@
           <button class="mode-tab" id="mode-projector" data-mode="projector" type="button" aria-pressed="false">Projector calibration</button>
         </nav>
         <button class="blackout-button" id="blackout" type="button" aria-pressed="false"><i class="ph ph-moon" aria-hidden="true"></i><span>Blackout</span></button>
-        <button class="icon-button settings-button" type="button" aria-label="Settings are not available yet" title="Settings are not available yet" disabled><i class="ph ph-gear-six" aria-hidden="true"></i></button>
       </header>
 
       <main class="workspace">
@@ -48,7 +47,7 @@
           <section class="rail-section source-section">
             <div class="section-heading"><h2>Source</h2></div>
             <label class="source-kind-label" for="source-kind">Source type</label>
-            <select id="source-kind" class="source-kind-select"><option value="reference">Image</option><option value="webrtc">Live video · WebRTC</option></select>
+            <select id="source-kind" class="source-kind-select"><option value="reference">Reference image</option><option value="webrtc">Live video · WebRTC</option></select>
             <div id="reference-source-content">
               <div class="asset-name-row"><span id="reference-name">Reference image</span><span id="reference-state" class="asset-state muted">None</span></div>
               <div class="reference-preview asset-preview">
@@ -67,18 +66,19 @@
                 <button class="text-button" id="webrtc-preview-freeze" type="button" aria-pressed="false" disabled>Freeze preview</button>
                 <span id="webrtc-preview-status" role="status">No live video</span>
               </div>
-              <p class="webrtc-preview-note">Receive and align live video before opening Output. Freeze affects this preview only.</p>
+              <p class="webrtc-preview-note">Freeze holds this preview while the source and projection continue.</p>
               <video id="webrtc-video" autoplay playsinline muted aria-hidden="true" hidden></video>
               <p class="webrtc-status" id="webrtc-panel-status" role="status" aria-live="polite">Disconnected. Select WebRTC to connect.</p>
               <div class="signaling-controls">
                 <button class="button button-secondary rail-action" id="signaling-start" type="button">Start connection server</button>
+                <label class="webrtc-source-label" for="signaling-url">Browser sender link</label>
                 <input id="signaling-url" type="text" readonly aria-label="WebRTC connection link" placeholder="Start the server to create a local connection link">
                 <div class="signaling-actions">
                   <button class="text-button" id="signaling-copy" type="button" disabled>Copy link</button>
                   <button class="text-button" id="signaling-stop" type="button" disabled>Stop server</button>
                 </div>
                 <p class="webrtc-limit-note">The connection server is bound to localhost. Share this link only with the intended sender.</p>
-                <label class="webrtc-source-label" for="whip-url">WHIP endpoint</label>
+                <label class="webrtc-source-label whip-label" for="whip-url">WHIP sender endpoint</label>
                 <input id="whip-url" type="text" readonly aria-label="WHIP endpoint" placeholder="Start the server to create a WHIP endpoint">
                 <div class="signaling-actions">
                   <button class="text-button" id="whip-copy-url" type="button" disabled>Copy WHIP URL</button>
@@ -138,7 +138,7 @@
           <div class="inspector-scroll">
             <p id="mapping-uv-note" class="section-note mapping-uv-note" hidden>Model UV requires a texture made for this OBJ’s UV layout. For an ordinary image, choose Front and Align.</p>
             <section class="inspector-section placement-panel" id="placement-panel">
-              <div class="inspector-title-row"><h2>Image transform</h2><span class="section-index">01</span></div>
+              <div class="inspector-title-row"><h2>Image position</h2><span class="section-index">01</span></div>
               <div class="field-row coordinate-row">
                 <label for="placement-x">Position <span class="field-unit">normalized</span></label>
                 <div class="coordinate-inputs"><div class="number-control"><span>X</span><input id="placement-x" type="number" min="-2" max="2" step="0.01" value="0" aria-label="Image position X, normalized"><small>norm</small></div><div class="number-control"><span>Y</span><input id="placement-y" type="number" min="-2" max="2" step="0.01" value="0" aria-label="Image position Y, normalized"><small>norm</small></div></div>
@@ -155,7 +155,7 @@
             </section>
 
             <section class="inspector-section alignment-panel" id="alignment-panel" hidden>
-              <div class="inspector-title-row"><h2>Landmark alignment</h2><span class="alignment-count">0 / 12</span></div>
+              <div class="inspector-title-row"><h2>Image alignment points</h2><span class="alignment-count">0 / 12</span></div>
               <p class="section-note" id="alignment-mode-note">Pair matching points on the image and model. Use at least three landmarks.</p>
               <div class="alignment-list" aria-label="Landmark pairs"></div>
               <div class="alignment-actions"><button class="text-button" type="button" data-alignment-remove disabled><i class="ph ph-trash" aria-hidden="true"></i>Remove selected</button><button class="text-button" type="button" data-alignment-clear disabled><i class="ph ph-broom" aria-hidden="true"></i>Clear all</button></div>
@@ -172,14 +172,14 @@
             </section>
 
             <section class="inspector-section projector-panel" id="projector-panel" hidden>
-              <div class="inspector-title-row"><h2>Projector</h2><span class="section-index">01</span></div>
+              <div class="inspector-title-row"><h2>Projector camera</h2><span class="section-index">01</span></div>
               <div class="field-row"><label for="projector-fov">Field of view</label><div class="number-control wide"><input id="projector-fov" type="number" min="1" max="179" step="0.1" value="45"><small>°</small></div></div>
               <div class="field-group-label">Projector position <span>XYZ</span></div>
               <div class="triple-inputs"><div class="number-control"><span>X</span><input id="projector-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="projector-y" type="number" step="0.01" value="0"></div><div class="number-control"><span>Z</span><input id="projector-z" type="number" step="0.01" value="3"></div></div>
-              <div class="field-group-label">Camera rotation <span>degrees</span></div>
+              <div class="field-group-label">Projector rotation <span>degrees</span></div>
               <div class="triple-inputs"><div class="number-control"><span>X</span><input id="camera-rx" type="number" step="0.1" value="0"></div><div class="number-control"><span>Y</span><input id="camera-ry" type="number" step="0.1" value="0"></div><div class="number-control"><span>Z</span><input id="camera-rz" type="number" step="0.1" value="0"></div></div>
               <div class="field-row"><label for="projector-offset-x">Image offset</label><div class="coordinate-inputs"><div class="number-control"><span>X</span><input id="projector-offset-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="projector-offset-y" type="number" step="0.01" value="0"></div></div></div>
-              <div class="inspector-title-row model-calibration-title"><h2>Model calibration</h2><span class="section-index">02</span></div>
+              <div class="inspector-title-row model-calibration-title"><h2>Model pose</h2><span class="section-index">02</span></div>
               <div class="field-row"><label for="model-scale">Model scale</label><div class="number-control wide"><input id="model-scale" type="number" min="0.01" step="0.01" value="1"><small>×</small></div></div>
               <div class="field-group-label">Position <span>XYZ</span></div>
               <div class="triple-inputs"><div class="number-control"><span>X</span><input id="model-x" type="number" step="0.01" value="0"></div><div class="number-control"><span>Y</span><input id="model-y" type="number" step="0.01" value="0"></div><div class="number-control"><span>Z</span><input id="model-z" type="number" step="0.01" value="0"></div></div>
@@ -191,8 +191,8 @@
             </section>
           </div>
           <div class="inspector-footer">
-            <p class="cta-hint" id="cta-hint">Set up a model and source before reviewing the projector.</p>
-            <button class="button button-primary review-button" id="review-projector" type="button"><i class="ph ph-play" aria-hidden="true"></i><span>Review projector</span><i class="ph ph-arrow-up-right cta-arrow" aria-hidden="true"></i></button>
+            <p class="cta-hint" id="cta-hint">Import a model to begin.</p>
+            <button class="button button-primary review-button" id="review-projector" type="button"><i class="ph ph-cube" aria-hidden="true"></i><span>Import model</span><i class="ph ph-arrow-up-right cta-arrow" aria-hidden="true"></i></button>
           </div>
         </aside>
       </main>

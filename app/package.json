@@ -2,7 +2,7 @@
   "name": "headinjar",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop projection mapping with landmark alignment and projector calibration",
+  "description": "Head in Jar desktop projection mapping editor",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {

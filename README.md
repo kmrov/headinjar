@@ -1,6 +1,6 @@
 <div align="center">
 
-# Head in Jar 🫙
+# Head in Jar
 
 Fit an image to a 3D model, then line it up with the object you're projecting onto.
 
@@ -37,13 +37,15 @@ npm start
 
 `npm start` builds the renderer and opens the editor. Bring an OBJ mesh and a reference image of your own; the repository does not bundle either.
 
+Start with the [illustrated beginner tutorial](docs/tutorial.md). Its screenshots were captured with local assets; the OBJ and texture themselves are not distributed.
+
 ## Your first projection 🎯
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
-2. **Place the texture.** Use Front mapping for a front-facing image. Adjust Image transform, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture.
+2. **Place the texture.** Use Front mapping for a front-facing image. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture.
 3. **Refine coverage.** Use Grid for local adjustments and Mask to limit coverage. Double-click to finish a mask contour.
-4. **Choose an output display.** Select the projector display, then use **Resume** to show the image. Output starts black until explicitly enabled.
-5. **Match the physical object.** Open Projector and adjust image offset, model scale and rotation, and camera perspective.
+4. **Choose an output display.** Select the projector display and open black output, then use **Resume** to show the image. Output starts black until explicitly enabled.
+5. **Match the physical object.** Open **Projector calibration** and adjust image offset, model scale and rotation, and camera perspective.
 6. **Save the project.** Keep the reference image accessible at its original path.
 
 For precise landmark placement in **Front → Align**, zoom the source image and model independently with the mouse wheel at the cursor. Middle-drag to pan either view. **Fit source** resets the image; **Fit view** resets the model. These view changes do not alter the saved texture placement or projector calibration.
@@ -62,7 +64,7 @@ A front photo cannot show the sides or back of an object. And if an OBJ has UV c
 Texture alignment fits the image to the digital model. Physical alignment corrects the final projector frame to match a real object.
 
 1. Fix the projector and object in place, then set a reasonable camera and model pose.
-2. Under **Projector calibration → Physical alignment**, choose **Use model landmarks**, or use **Add point** to select a point on the model preview.
+2. Under **Projector calibration → Projection alignment points**, choose **Use model landmarks**, or use **Add point** to select a point on the model preview.
 3. Select a landmark. With output live, a numbered cross appears on the projector.
 4. Move its target while watching the physical object. Arrow keys move one output pixel; Shift + arrow moves ten. Target X/Y fields provide numeric control.
 5. Repeat for at least three non-collinear points, up to twelve, then choose **Apply alignment**.
@@ -75,12 +77,12 @@ This is operator-guided 2D frame correction. It does not detect the object or au
 
 Under **Source type**, choose **Live video · WebRTC** and **Start connection server**. The image controls give way to the video preview and connection controls. The server listens on `127.0.0.1:19840` and stays off until started. You can connect and inspect live video in the editor before opening an output display or importing a mesh. After importing a mesh, the same live frame appears on the model and in **Front → Align**. **Freeze preview** holds the editor and alignment view while the stream keeps running; it does not freeze the projector. The server provides two connection methods:
 
-- **Built-in sender:** use **Copy connection link** and open the link on the same computer. The page at `/sender` creates a test canvas video track and optional synthetic audio, then exchanges the offer and answer automatically. The link contains a per-start token in its URL fragment; keep it private.
+- **Built-in sender:** use **Copy link** and open the link on the same computer. The page at `/sender` creates a test canvas video track and optional synthetic audio, then exchanges the offer and answer automatically. The link contains a per-start token in its URL fragment; keep it private.
 - **WHIP client:** use **Copy WHIP URL** and **Copy Bearer token**. Send a complete ICE-gathered SDP offer as `POST /whip` with `Content-Type: application/sdp` and `Authorization: Bearer <token>`. The `201` response contains SDP answer and a session `Location`. Apply the answer, then send authenticated `DELETE` to that exact `Location` when finished. Trickle ICE, `PATCH`, and ICE restart are not supported in this version.
 
 For a client on the same computer, the default WHIP endpoint is `http://127.0.0.1:19840/whip`. To use HTTPS, set both `HEADINJAR_TLS_CERT` and `HEADINJAR_TLS_KEY` to certificate and key file paths before starting the app. The certificate must cover `127.0.0.1` and be trusted by the client. A missing or unreadable certificate or key prevents the server from starting. The app does not expose the endpoint on a LAN interface.
 
-Live input does not turn on the projector. Select a display and use **Resume** after the stream connects. **Hold** freezes the last projected frame and mutes audio; **Blackout** and **Stop** show black and mute audio. Closing or reopening Output keeps the WebRTC source connected. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. Switching back to Reference replaces the live editor preview with the saved reference image.
+Live input does not turn on the projector. Select a display and use **Resume** after the stream connects. **Hold** freezes the last projected frame and mutes audio; **Blackout** and **Stop** show black and mute audio. Closing or reopening Output keeps the WebRTC source connected. A connection loss, video resize, or decoded-frame stall disarms output and requires another explicit **Resume**. Switching back to **Reference image** replaces the live editor preview with the saved reference image.
 
 ### Output controls
 

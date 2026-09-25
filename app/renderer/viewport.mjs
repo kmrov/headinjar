@@ -35,7 +35,7 @@ export function createViewport(host, callbacks={}) {
     const hasMesh=Boolean(snapshot?.project.mesh);
     label.textContent=hasMesh?'OBJ preview · normalized fit':'No model loaded';
     label.style.display=tool==='align'?'none':'';
-    hint.textContent=!hasMesh?'':mode==='projector'?'Calibration preview':tool==='align'?'Pick landmarks · wheel zoom · middle-drag pan · drag markers':tool==='grid'?'Source UV grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
+    hint.textContent=!hasMesh?'':mode==='projector'?'Projection preview':tool==='align'?'Pick image points · wheel zoom · middle-drag pan · drag markers':tool==='grid'?'Image warp grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
     if(mode==='projector'&&physical.active){
       label.textContent='Original projector image · point editing';
       hint.textContent=physical.picking?'Click a landmark on the head':'Drag orange crosshair · arrows 1 px · Shift 10 px';

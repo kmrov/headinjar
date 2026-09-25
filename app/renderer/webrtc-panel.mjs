@@ -53,8 +53,7 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
         : current.status === 'stalled' ? 'Stream stalled'
           : current.status === 'error' ? 'Connection error' : 'Disconnected';
     const size = current.width && current.height ? ` · ${current.width} × ${current.height}` : '';
-    const session = current.sessionId ? ` · session ${current.sessionId.slice(0, 8)}` : '';
-    status.textContent = `${stateLabel}${size}${session}. ${current.detail || ''}`;
+    status.textContent = `${stateLabel}${size}${current.detail ? `. ${current.detail}` : ''}`;
     connect.disabled = current.kind !== 'webrtc' || !isReceiverReady();
     disconnect.disabled = current.kind !== 'webrtc' || current.status === 'disconnected';
     offer.disabled = current.kind !== 'webrtc';

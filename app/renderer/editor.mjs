@@ -605,10 +605,17 @@ function updateCta() {
   if (!snapshot) return;
   const project = snapshot.project || {};
   const needsModel = !project.mesh;
-  const hasDisplay = Boolean(snapshot.displayId || project.output?.displayId);
-  ui.ctaHint.textContent = needsModel ? 'Import an OBJ to preview and calibrate your model.'
-    : !hasDisplay ? 'Choose a display. The output opens black until you explicitly resume.'
-      : 'Review calibration. Output stays black until you explicitly resume.';
+  const needsImage = snapshot.source?.kind !== 'webrtc' && !snapshot.referencePreview;
+  const needsVideo = snapshot.source?.kind === 'webrtc' && snapshot.source?.status !== 'running';
+  const hasDisplay = Boolean(snapshot.displayId);
+  const step = needsModel ? ['Import model', 'Start with the OBJ of the physical surface.', 'ph-cube']
+    : needsImage ? ['Add reference image', 'Add the image you will fit on the model.', 'ph-image-square']
+      : needsVideo ? ['Connect video', 'Connect the sender to preview its image.', 'ph-video-camera']
+        : !hasDisplay ? ['Choose display', 'Select the projector display. It opens black.', 'ph-monitor']
+          : ['Calibrate projector', 'Align the preview with the physical surface.', 'ph-crosshair'];
+  ui.ctaHint.textContent = step[1];
+  ui.review.querySelector('span').textContent = step[0];
+  ui.review.querySelector('i').className = `ph ${step[2]}`;
 }
 
 function bindEvents() {
@@ -680,8 +687,16 @@ function bindEvents() {
   $('#fit-view').addEventListener('click', () => viewportApi?.fit());
   $('#choose-display').addEventListener('click', openDisplayDialog);
   ui.review.addEventListener('click', () => {
+    if (!snapshot?.project?.mesh) return importFile('importMesh');
+    if (snapshot.source?.kind !== 'webrtc' && !snapshot.referencePreview) return importFile('importReference');
+    if (snapshot.source?.kind === 'webrtc' && snapshot.source?.status !== 'running') {
+      $('.source-rail').scrollTo({ top: $('.source-section').offsetTop, behavior: 'smooth' });
+      const target = snapshot.signaling?.running ? $('#signaling-copy') : $('#signaling-start');
+      target.focus();
+      return;
+    }
     setMode('projector');
-    openDisplayDialog();
+    if (!snapshot.displayId) openDisplayDialog();
   });
   $('#cancel-display').addEventListener('click', () => ui.displayDialog.close());
   ui.confirmDisplay.addEventListener('click', confirmDisplay);

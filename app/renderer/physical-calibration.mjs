@@ -6,7 +6,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
   root.id = 'physical-calibration';
   root.className = 'physical-calibration';
   root.innerHTML = `
-    <h2>Physical alignment</h2>
+    <div class="inspector-title-row"><h2>Projection alignment points</h2><span class="section-index">04</span></div>
     <p class="physical-help">Match the projected crosshair to the same landmark on the real head. Start with eyes, nose and chin.</p>
     <div class="physical-actions">
       <button id="physical-edit" type="button">Edit points</button>
@@ -32,7 +32,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
       <button id="physical-reset" type="button">Reset alignment</button>
     </div>
     <p class="physical-help">At least 3 points spread across the face. Adjust the camera first: changing camera, model pose or output size resets these points.</p>`;
-  parent.prepend(root);
+  parent.append(root);
   const q = selector => root.querySelector(selector);
   let snapshot = null, selected = null, editing = false, picking = false, visible = false;
   let draft = null, pending = false, lastMarker = '', note = '';
