@@ -6,6 +6,7 @@ import { surfaceFromHit, surfaceProjectionFrame } from '../src/mapping/surface.m
 
 const MIN_MODEL_ZOOM = 1;
 const MAX_MODEL_ZOOM = 8;
+const FRONT_DEPTH_RESOLUTION = 2048;
 
 // The shell owns arming; projection mode renders unlit color on black.
 export function createScenePreview(canvas, onError, { projection = false } = {}) {
@@ -35,6 +36,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     imageScale:{value:1}, angle:{value:0}, textureOpacity:{value:1}, useModelUV:{value:false}, useSurface:{value:false}, surfacePlaced:{value:false}, uvAvailable:{value:false},
     planeOrigin:{value:new THREE.Vector3()}, planeRight:{value:new THREE.Vector3(1,0,0)}, planeUp:{value:new THREE.Vector3(0,1,0)},
     planeNormal:{value:new THREE.Vector3(0,0,1)}, planeSize:{value:new THREE.Vector2(1,1)}, depthMin:{value:0}, depthRange:{value:1},
+    frontViewProjection:{value:new THREE.Matrix4()},
   };
   const material = new THREE.ShaderMaterial({
     defines: projection ? { PROJECTION_OUTPUT: 1 } : {},
@@ -45,11 +47,33 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     fragmentShader:`precision highp float;
       varying vec3 surfaceNormal; varying vec3 localPosition; varying vec3 localNormal; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
       uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
-      uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange;
-      // Two 8-bit channels keep the visibility bias below one tenth of a millimeter
-      // on a two-meter-deep model, instead of leaking onto nearby inner layers.
-      const float FRONT_DEPTH_EPSILON=2.0/65535.0;
+      uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange; uniform mat4 frontViewProjection;
+      // The depth texture is packed into two channels, so decode each texel
+      // before interpolating. Interpolating packed bytes would wrap at 256.
+      const float FRONT_TEXELS=${FRONT_DEPTH_RESOLUTION}.0;
+      const float FRONT_DEPTH_EPSILON=0.0005;
       vec2 at(vec2 p){return texture2D(grid,(p+0.5)/gridSize).xy;}
+      float unpackFrontDepth(vec4 encoded){return dot(encoded.rg,vec2(256.0,1.0))/257.0;}
+      vec2 sampledFrontDepth(vec2 uv){
+        vec2 pixel=uv*FRONT_TEXELS-0.5;
+        vec2 start=floor(pixel);
+        vec2 fraction=fract(pixel);
+        vec2 corner=(start+0.5)/FRONT_TEXELS;
+        vec2 stepSize=vec2(1.0/FRONT_TEXELS);
+        vec4 a=texture2D(frontDepth,corner);
+        vec4 b=texture2D(frontDepth,corner+vec2(stepSize.x,0.0));
+        vec4 c=texture2D(frontDepth,corner+vec2(0.0,stepSize.y));
+        vec4 d=texture2D(frontDepth,corner+stepSize);
+        vec4 weights=vec4((1.0-fraction.x)*(1.0-fraction.y),fraction.x*(1.0-fraction.y),
+          (1.0-fraction.x)*fraction.y,fraction.x*fraction.y);
+        vec4 coverage=vec4(a.a,b.a,c.a,d.a)*weights;
+        float covered=dot(coverage,vec4(1.0));
+        // At a depth edge, averaging can mix a nearby overhang into the
+        // exposed surface. Use the furthest covered tap for visibility.
+        float depth=min(min(a.a>0.5?unpackFrontDepth(a):1.0,b.a>0.5?unpackFrontDepth(b):1.0),
+          min(c.a>0.5?unpackFrontDepth(c):1.0,d.a>0.5?unpackFrontDepth(d):1.0));
+        return vec2(depth,covered);
+      }
       void main(){
         // Camera-space studio lighting keeps relief readable while orbiting.
         vec3 n=normalize(surfaceNormal);
@@ -66,9 +90,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
         if(hasImage && !useModelUV){
           float facing=useSurface?dot(normalize(localNormal),planeNormal):localNormal.z;
           float modelDepth=(dot(localPosition-planeOrigin,planeNormal)-depthMin)/depthRange;
-          vec4 front=texture2D(frontDepth,vec2(projectedDomain.x,1.0-projectedDomain.y));
-          float nearestDepth=dot(front.rg,vec2(256.0,1.0))/257.0;
-          if((useSurface && !surfacePlaced) || facing<=0.0 || front.a<0.5 || modelDepth<nearestDepth-FRONT_DEPTH_EPSILON){
+          vec4 frontClip=frontViewProjection*vec4(localPosition,1.0);
+          vec2 frontUv=frontClip.xy/frontClip.w*0.5+0.5;
+          vec2 front=sampledFrontDepth(frontUv);
+          if((useSurface && !surfacePlaced) || facing<=0.0 || frontClip.w<=0.0
+            || any(lessThan(frontUv,vec2(0.0))) || any(greaterThan(frontUv,vec2(1.0)))
+            || front.y<0.5 || modelDepth<front.x-FRONT_DEPTH_EPSILON){
             gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light,1.0);
             #ifdef PROJECTION_OUTPUT
               gl_FragColor=vec4(0.,0.,0.,1.);
@@ -102,14 +129,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
       }`,
   });
   const frontCaptureMaterial = new THREE.ShaderMaterial({
-    uniforms:{planeOrigin:uniforms.planeOrigin,planeRight:uniforms.planeRight,planeUp:uniforms.planeUp,
-      planeNormal:uniforms.planeNormal,planeSize:uniforms.planeSize,depthMin:uniforms.depthMin,depthRange:uniforms.depthRange},
-    vertexShader:`uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec2 planeSize; uniform vec3 planeNormal; uniform float depthMin; uniform float depthRange;
+    uniforms:{planeOrigin:uniforms.planeOrigin,planeNormal:uniforms.planeNormal,depthMin:uniforms.depthMin,depthRange:uniforms.depthRange},
+    vertexShader:`uniform vec3 planeOrigin; uniform vec3 planeNormal; uniform float depthMin; uniform float depthRange;
       varying float depthValue; varying float normalFacing;
       void main(){vec3 relative=position-planeOrigin;
-        float x=0.5+dot(relative,planeRight)/planeSize.x;float y=0.5+dot(relative,planeUp)/planeSize.y;
         depthValue=(dot(relative,planeNormal)-depthMin)/depthRange;normalFacing=dot(normal,planeNormal);
-        gl_Position=vec4(x*2.0-1.0,y*2.0-1.0,1.0-depthValue*2.0,1.0);}`,
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`precision highp float; varying float depthValue; varying float normalFacing;
       void main(){
         if(normalFacing<=0.0)discard;
@@ -120,13 +145,13 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     depthTest:true,depthWrite:true,side:THREE.DoubleSide,
   });
   const frontCaptureScene=new THREE.Scene();
-  const frontCaptureCamera=new THREE.Camera();
+  const frontCaptureCamera=new THREE.PerspectiveCamera();
   function captureFrontDepth(frame) {
     if (!model || !frame) return;
     const nextKey=JSON.stringify(frame);
     if (nextKey===depthKey) return;
     depthKey=nextKey;
-    if (!frontDepthTarget) frontDepthTarget=new THREE.WebGLRenderTarget(2048,2048,{
+    if (!frontDepthTarget) frontDepthTarget=new THREE.WebGLRenderTarget(FRONT_DEPTH_RESOLUTION,FRONT_DEPTH_RESOLUTION,{
       format:THREE.RGBAFormat,type:THREE.UnsignedByteType,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:true,
     });
     uniforms.planeOrigin.value.fromArray(frame.origin);
@@ -136,9 +161,22 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     uniforms.planeSize.value.set(frame.width,frame.height);
     uniforms.depthMin.value=frame.depthMin;
     uniforms.depthRange.value=frame.depthRange;
+    const modelSize=modelBounds.getSize(new THREE.Vector3());
+    const distance=1.75*Math.max(modelSize.x,modelSize.y,modelSize.z);
+    const nearest=Math.max(distance-(frame.depthMin+frame.depthRange),distance*0.01);
+    frontCaptureCamera.position.copy(uniforms.planeOrigin.value).addScaledVector(uniforms.planeNormal.value,distance);
+    frontCaptureCamera.up.copy(uniforms.planeUp.value);
+    frontCaptureCamera.lookAt(uniforms.planeOrigin.value);
+    frontCaptureCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(frame.height/(2*nearest)));
+    frontCaptureCamera.aspect=frame.width/frame.height;
+    frontCaptureCamera.near=Math.max(nearest*0.1,1e-6);
+    frontCaptureCamera.far=distance-frame.depthMin+Math.max(modelSize.x,modelSize.y,modelSize.z)*0.1;
+    frontCaptureCamera.updateProjectionMatrix();
+    frontCaptureCamera.updateMatrixWorld(true);
+    uniforms.frontViewProjection.value.multiplyMatrices(frontCaptureCamera.projectionMatrix,frontCaptureCamera.matrixWorldInverse);
     model.traverse(child=>{if(child.isMesh){
       const captureMesh=new THREE.Mesh(child.geometry,frontCaptureMaterial);
-      // The shader remaps raw position directly to clip space, so Three's CPU bounds are unrelated.
+      // OBJ geometry is kept in its original local coordinates for the capture.
       captureMesh.frustumCulled=false;
       frontCaptureScene.add(captureMesh);
     }});

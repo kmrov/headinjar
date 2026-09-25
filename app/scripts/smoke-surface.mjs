@@ -147,13 +147,13 @@ try {
   await invoke('openProject');
   assert.deepEqual((await invoke('getSnapshot')).project.placement.surface,placed,'reopen restores Surface placement');
 
-  // A rear face only 7 mm behind a front face must stay untextured even when
+  // A rear face only 2 mm behind a front face must stay untextured even when
   // viewed obliquely, where both faces are visible to the projector camera.
   const closeLayerMesh = (rear) => [
     'v -0.2 -1 1','v 0.2 -1 1','v 0.2 1 1','v -0.2 1 1',
     'v -0.01 -0.99 -1','v 0.01 -0.99 -1','v 0 -0.97 -1',
     'f 1 2 3 4','f 5 6 7',
-    ...(rear ? ['v -0.2 -1 0.993','v 0.2 -1 0.993','v 0.2 1 0.993','v -0.2 1 0.993','f 8 9 10 11'] : []),
+    ...(rear ? ['v -0.2 -1 0.998','v 0.2 -1 0.998','v 0.2 1 0.998','v -0.2 1 0.998','f 8 9 10 11'] : []),
   ].join('\n') + '\n';
   await writeFile(meshPath, closeLayerMesh(false));
   await editor.locator('#import-mesh').click();
@@ -200,10 +200,83 @@ try {
   assert.ok(comparison.beforeCenter.slice(0,3).every(channel=>channel>180),'the exposed front surface receives the image');
   assert.ok(comparison.afterCenter.slice(0,3).every(channel=>channel>180),'adding an inner layer keeps the front image');
   assert.ok(comparison.newBright<10,`occluded rear layer must not receive the image: ${JSON.stringify(comparison)}`);
+
+  // A curved mesh changes depth within one capture texel. Its exposed surface
+  // should remain fully textured instead of alternating between white and black.
+  const columns=81,rows=81;
+  const wave=[];
+  for(let row=0;row<rows;row++)for(let column=0;column<columns;column++){
+    const x=column/(columns-1)*2-1,y=row/(rows-1)*2-1;
+    wave.push(`v ${x} ${y} ${0.12*Math.sin(18*x)*Math.sin(18*y)}`);
+  }
+  wave.push('v -0.01 -0.99 -1','v 0.01 -0.99 -1','v 0 -0.97 -1');
+  for(let row=0;row<rows-1;row++)for(let column=0;column<columns-1;column++){
+    const a=row*columns+column+1,b=a+1,d=a+columns,c=d+1;
+    wave.push(`f ${a} ${b} ${c}`,`f ${a} ${c} ${d}`);
+  }
+  wave.push(`f ${columns*rows+1} ${columns*rows+2} ${columns*rows+3}`);
+  await writeFile(meshPath,wave.join('\n')+'\n');
+  await editor.locator('#import-mesh').click();
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const curvedShot=join(screenshots,'surface-curved-front.png');
+  await edgeOutput.screenshot({path:curvedShot});
+  const coverageOf=path=>application.evaluate(({nativeImage},path)=>{
+    const image=nativeImage.createFromPath(path),pixels=image.toBitmap(),{width,height}=image.getSize();
+    let bright=0,total=0;
+    for(let y=Math.floor(height*0.38);y<height*0.62;y+=4)
+      for(let x=Math.floor(width/2-height*0.12);x<width/2+height*0.12;x+=4){
+        const offset=(y*width+x)*4;total++;
+        if(Math.min(pixels[offset],pixels[offset+1],pixels[offset+2])>180)bright++;
+    }
+    return bright/total;
+  },path);
+  const curveCoverage=await coverageOf(curvedShot);
+  assert.ok(curveCoverage>0.98,`exposed curved Front surface should stay textured: ${curveCoverage}`);
+  await invoke('editProject',{type:'mapping-mode',value:'surface'});
+  await invoke('editProject',{type:'surface-placement',value:{position:[0,0,0],normal:[0,0,1],up:[0,1,0],scale:1,rotation:0}});
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const curvedSurfaceShot=join(screenshots,'surface-curved-surface.png');
+  await edgeOutput.screenshot({path:curvedSurfaceShot});
+  const surfaceCurveCoverage=await coverageOf(curvedSurfaceShot);
+  assert.ok(surfaceCurveCoverage>0.98,`exposed curved Surface placement should stay textured: ${surfaceCurveCoverage}`);
+
+  // A recessed face can be visible below an overhang even though an
+  // orthographic ray along +Z crosses the overhang first (as under a nose).
+  await writeFile(meshPath, [
+    'v -0.5 -0.5 0','v 0.5 -0.5 0','v 0.5 0.5 0','v -0.5 0.5 0',
+    'v -0.5 0.3 0.5','v 0.5 0.3 0.5','v 0.5 0.5 0.5','v -0.5 0.5 0.5',
+    'f 1 2 3 4','f 5 6 7 8',
+  ].join('\n')+'\n');
+  await editor.locator('#import-mesh').click();
+  await invoke('editProject',{type:'mapping-mode',value:'front'});
+  const frontalProjector=structuredClone((await invoke('getSnapshot')).project.projector);
+  frontalProjector.position=[0,0,3];frontalProjector.rotation=[0,0,0];
+  await invoke('editProject',{type:'projector',value:frontalProjector});
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const overhangShot=join(screenshots,'surface-recessed-under-overhang.png');
+  await edgeOutput.screenshot({path:overhangShot});
+  const overhangSize=await application.evaluate(({nativeImage},path)=>nativeImage.createFromPath(path).getSize(),overhangShot);
+  const backgroundPixel=await pixelAt(overhangShot,10,10);
+  assert.ok(backgroundPixel.every(channel=>channel<30),`the output frame has a black background: ${backgroundPixel}`);
+  const recessedPixel=await pixelAt(overhangShot,overhangSize.width/2,overhangSize.height*0.29);
+  assert.ok(recessedPixel.every(channel=>channel>180),`visible recessed Front surface below an overhang receives the image: ${recessedPixel}`);
+  await invoke('editProject',{type:'mapping-mode',value:'surface'});
+  await invoke('editProject',{type:'surface-placement',value:{position:[0,0,0],normal:[0,0,1],up:[0,1,0],scale:1,rotation:0}});
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const recessedSurfaceShot=join(screenshots,'surface-recessed-surface.png');
+  await edgeOutput.screenshot({path:recessedSurfaceShot});
+  const recessedSurfacePixel=await pixelAt(recessedSurfaceShot,overhangSize.width/2,overhangSize.height*0.29);
+  assert.ok(recessedSurfacePixel.every(channel=>channel>180),`visible recessed Surface placement below an overhang receives the image: ${recessedSurfacePixel}`);
   await invoke('outputAction',{type:'stop'});
   await edgeOutput.close();
   assert.deepEqual(errors, []);
-  console.log('PASS: Surface place, orbit, side drag, one undo step, redo, save, editor and output pixels.');
+  console.log(`PASS: Surface placement and persistence; curved Front ${Math.round(curveCoverage*1000)/10}%, curved Surface ${Math.round(surfaceCurveCoverage*1000)/10}%, 2 mm hidden-layer bright pixels ${comparison.newBright}.`);
 } finally {
   await application?.close();
   await rm(temporary, { recursive: true, force: true });
