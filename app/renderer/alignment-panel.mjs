@@ -1,6 +1,6 @@
 import { fittedSourceRect, sourcePointAt, zoomAtCursor } from './alignment-source-view.mjs';
 
-export function createAlignmentPanel(root, controlsRoot = document, { onSourcePoint, onSelect, onRemove, onClear } = {}) {
+export function createAlignmentPanel(root, controlsRoot = document, { onSourcePoint, onSelect, onMoveSource, onCancelSourceDrag, onRemove, onClear } = {}) {
   const image = root.querySelector('.alignment-image');
   const liveImage = root.querySelector('.alignment-live-image');
   const markers = root.querySelector('.alignment-markers');
@@ -19,6 +19,8 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
   let referenceDimensionKey = '';
   let sourceView = { zoom: 1, panX: 0, panY: 0 };
   let panGesture = null;
+  let sourceDrag = null;
+  let suppressSourceClick = false;
   const dimension = element => element === image
     ? { width: image.naturalWidth, height: image.naturalHeight }
     : { width: liveImage.width, height: liveImage.height };
@@ -69,6 +71,7 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
     positionMarkers();
   }
   function resetSourceView() {
+    endSourceDrag(null, true);
     endPan();
     sourceView = { zoom: 1, panX: 0, panY: 0 };
     applySourceView();
@@ -103,47 +106,102 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
     applySourceView();
   }
   function onPointerDown(event) {
-    if (event.button !== 1 || !displayedImage()) return;
-    event.preventDefault();
-    panGesture = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: sourceView.panX, panY: sourceView.panY };
+    if ((event.button !== 0 && event.button !== 1) || !displayedImage() || panGesture || sourceDrag) return;
+    const marker = event.button === 0 ? event.target.closest?.('.alignment-marker:not(.is-pending)') : null;
+    if (marker) {
+      const index = Number(marker.dataset.index);
+      if (!Number.isInteger(index) || index < 0 || index >= currentPairs.length) return;
+      suppressSourceClick = false;
+      sourceDrag = { pointerId: event.pointerId, index, clientX: event.clientX, clientY: event.clientY, point: null, moved: false };
+      frame.setPointerCapture(event.pointerId);
+      onSelect?.(index);
+      return;
+    }
+    if (event.button === 1) event.preventDefault();
+    suppressSourceClick = false;
+    panGesture = { pointerId: event.pointerId, button: event.button, clientX: event.clientX, clientY: event.clientY, panX: sourceView.panX, panY: sourceView.panY, moved: false };
     frame.setPointerCapture(event.pointerId);
   }
   function onPointerMove(event) {
+    if (sourceDrag?.pointerId === event.pointerId) {
+      const dx = event.clientX - sourceDrag.clientX;
+      const dy = event.clientY - sourceDrag.clientY;
+      if (!sourceDrag.moved && Math.hypot(dx, dy) < 4) return;
+      sourceDrag.moved = true;
+      frame.classList.add('is-dragging-marker');
+      event.preventDefault();
+      const point = sourcePoint(event);
+      if (point) {
+        sourceDrag.point = point;
+        onMoveSource?.(sourceDrag.index, point, false);
+      }
+      return;
+    }
     if (!panGesture || panGesture.pointerId !== event.pointerId) return;
-    sourceView.panX = panGesture.panX + event.clientX - panGesture.clientX;
-    sourceView.panY = panGesture.panY + event.clientY - panGesture.clientY;
+    const dx = event.clientX - panGesture.clientX;
+    const dy = event.clientY - panGesture.clientY;
+    if (panGesture.button === 0 && !panGesture.moved && Math.hypot(dx, dy) < 4) return;
+    panGesture.moved = true;
+    frame.classList.add('is-panning');
+    event.preventDefault();
+    sourceView.panX = panGesture.panX + dx;
+    sourceView.panY = panGesture.panY + dy;
     applySourceView();
+  }
+  function onPointerUp(event) {
+    if (sourceDrag?.pointerId === event.pointerId) {
+      endSourceDrag(event, false);
+      return;
+    }
+    if (panGesture?.pointerId === event.pointerId && panGesture.button === 0 && panGesture.moved) suppressSourceClick = true;
+    endPan(event);
+  }
+  function endSourceDrag(event, cancel) {
+    if (!sourceDrag || (event?.pointerId !== undefined && sourceDrag.pointerId !== event.pointerId)) return;
+    const drag = sourceDrag;
+    sourceDrag = null;
+    frame.classList.remove('is-dragging-marker');
+    if (frame.hasPointerCapture?.(drag.pointerId)) frame.releasePointerCapture(drag.pointerId);
+    if (cancel) {
+      if (drag.moved) onCancelSourceDrag?.();
+      return;
+    }
+    suppressSourceClick = true;
+    if (drag.moved && drag.point) onMoveSource?.(drag.index, drag.point, true);
+    else if (drag.moved) onCancelSourceDrag?.();
   }
   function endPan(event) {
     if (!panGesture || (event?.pointerId !== undefined && panGesture.pointerId !== event.pointerId)) return;
     const pointerId = panGesture.pointerId;
     panGesture = null;
+    frame.classList.remove('is-panning');
     if (frame.hasPointerCapture?.(pointerId)) frame.releasePointerCapture(pointerId);
   }
   function onAuxClick(event) { if (event.button === 1) event.preventDefault(); }
   function onContextMenu(event) { if (panGesture) event.preventDefault(); }
+  function onFrameClick(event) {
+    if (event.button !== 0) return;
+    if (suppressSourceClick) {
+      suppressSourceClick = false;
+      event.preventDefault();
+      return;
+    }
+    if (event.target.closest?.('.alignment-marker')) return;
+    const point = sourcePoint(event);
+    if (point) onSourcePoint?.(point);
+  }
   frame.addEventListener('wheel', onWheel, { passive: false });
   frame.addEventListener('pointerdown', onPointerDown);
   frame.addEventListener('pointermove', onPointerMove);
-  frame.addEventListener('pointerup', endPan);
-  frame.addEventListener('pointercancel', endPan);
-  frame.addEventListener('lostpointercapture', endPan);
+  frame.addEventListener('pointerup', onPointerUp);
+  function onPointerCancel(event) { endSourceDrag(event, true); endPan(event); }
+  function onLostPointerCapture(event) { endSourceDrag(event, true); endPan(event); }
+  frame.addEventListener('pointercancel', onPointerCancel);
+  frame.addEventListener('lostpointercapture', onLostPointerCapture);
   frame.addEventListener('auxclick', onAuxClick);
   frame.addEventListener('contextmenu', onContextMenu);
+  frame.addEventListener('click', onFrameClick);
   fitSource.addEventListener('click', resetSourceView);
-
-  function onReferenceClick(event) {
-    if (event.button !== 0) return;
-    const point = sourcePoint(event);
-    if (point) onSourcePoint?.(point);
-  }
-  function onLiveClick(event) {
-    if (event.button !== 0) return;
-    const point = sourcePoint(event);
-    if (point) onSourcePoint?.(point);
-  }
-  image.addEventListener('click', onReferenceClick);
-  liveImage.addEventListener('click', onLiveClick);
   remove.addEventListener('click', () => onRemove?.());
   clear.addEventListener('click', () => onClear?.());
 
@@ -167,8 +225,9 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
         marker.type = 'button';
         marker.className = 'alignment-marker';
         marker.classList.toggle('is-selected', index === selected);
+        marker.dataset.index = String(index);
         marker.textContent = String(index + 1);
-        marker.setAttribute('aria-label', `Select landmark pair ${index + 1}`);
+        marker.setAttribute('aria-label', `Select or drag landmark pair ${index + 1}`);
         marker.addEventListener('click', (event) => { event.stopPropagation(); onSelect?.(index); });
         markers.append(marker);
       });
@@ -231,17 +290,17 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
     destroy() {
       resizeObserver.disconnect();
       image.removeEventListener('load', onImageLoad);
-      image.removeEventListener('click', onReferenceClick);
-      liveImage.removeEventListener('click', onLiveClick);
       frame.removeEventListener('wheel', onWheel);
       frame.removeEventListener('pointerdown', onPointerDown);
       frame.removeEventListener('pointermove', onPointerMove);
-      frame.removeEventListener('pointerup', endPan);
-      frame.removeEventListener('pointercancel', endPan);
-      frame.removeEventListener('lostpointercapture', endPan);
+      frame.removeEventListener('pointerup', onPointerUp);
+      frame.removeEventListener('pointercancel', onPointerCancel);
+      frame.removeEventListener('lostpointercapture', onLostPointerCapture);
       frame.removeEventListener('auxclick', onAuxClick);
       frame.removeEventListener('contextmenu', onContextMenu);
+      frame.removeEventListener('click', onFrameClick);
       fitSource.removeEventListener('click', resetSourceView);
+      endSourceDrag(null, true);
       endPan();
     },
   };

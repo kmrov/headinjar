@@ -170,14 +170,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .alignment-source-title span { color: #818d87; font-size: 9px; }
 .alignment-source-fit { min-height: 26px; flex: 0 0 auto; padding: 0 6px; font-size: 9px; white-space: nowrap; }
 .alignment-source-fit[disabled] { opacity: .48; }
-.alignment-image-frame { position: relative; display: grid; overflow: hidden; min-height: 150px; flex: 1 1 auto; place-items: center; background: #0c0f10; border: 1px solid #30383a; }
+.alignment-image-frame { position: relative; display: grid; overflow: hidden; min-height: 150px; flex: 1 1 auto; place-items: center; background: #0c0f10; border: 1px solid #30383a; touch-action: none; }
+.alignment-image-frame.is-panning, .alignment-image-frame.is-panning .alignment-image, .alignment-image-frame.is-panning .alignment-live-image, .alignment-image-frame.is-dragging-marker, .alignment-image-frame.is-dragging-marker .alignment-marker { cursor: grabbing; }
 .alignment-image { display: block; width: 100%; height: 100%; object-fit: contain; cursor: crosshair; user-select: none; }
 .alignment-image[hidden], .alignment-live-image[hidden] { display: none; }
 .alignment-live-image { display: block; width: 100%; height: 100%; object-fit: contain; cursor: crosshair; user-select: none; }
 .alignment-empty { position: absolute; padding: 20px; color: #818d87; font-size: 10px; text-align: center; }
 .alignment-empty[hidden] { display: none; }
 .alignment-markers { position: absolute; inset: 0; pointer-events: none; }
-.alignment-marker { position: absolute; display: grid; width: 22px; height: 22px; place-items: center; padding: 0; color: #132018; border: 2px solid #ddf4e6; border-radius: 50%; background: #9cddb6; box-shadow: 0 1px 6px #000b; font-size: 10px; font-weight: 700; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; }
+.alignment-marker { position: absolute; display: grid; width: 22px; height: 22px; place-items: center; padding: 0; color: #132018; border: 2px solid #ddf4e6; border-radius: 50%; background: #9cddb6; box-shadow: 0 1px 6px #000b; font-size: 10px; font-weight: 700; transform: translate(-50%, -50%); pointer-events: auto; cursor: grab; }
 .alignment-marker.is-selected { color: #fff; border-color: #fff; background: #368754; outline: 2px solid #66d893; }
 .alignment-marker.is-pending { color: #182018; border-color: #fff0ac; background: #e9c96c; border-style: dashed; pointer-events: none; }
 .alignment-step { min-height: 30px; margin: 10px 1px 0; color: #9ba7a1; font-size: 10px; line-height: 1.45; }

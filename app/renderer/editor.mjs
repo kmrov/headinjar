@@ -73,6 +73,27 @@ alignmentPanel = createAlignmentPanel(ui.alignmentSource, ui.alignmentPanel, {
     viewportApi?.setAlignmentSelection(index);
     renderAlignment();
   },
+  onMoveSource: (index, source, commit) => {
+    const pairs = alignmentPairs().map((pair, pairIndex) => pairIndex === index ? { ...pair, source } : pair);
+    if (!commit) {
+      updateAlignmentPreview(pairs);
+      return;
+    }
+    return safely(async () => {
+      try {
+        await commitAlignmentPairs(pairs, pairs.length >= 3);
+        viewportApi?.clearAlignmentPreview();
+      } catch (error) {
+        viewportApi?.clearAlignmentPreview();
+        renderAlignment();
+        throw error;
+      }
+    });
+  },
+  onCancelSourceDrag: () => {
+    viewportApi?.clearAlignmentPreview();
+    renderAlignment();
+  },
   onRemove: () => {
     if (selectedAlignment === null) return;
     const pairs = alignmentPairs().filter((_, index) => index !== selectedAlignment);
