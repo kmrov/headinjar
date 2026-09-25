@@ -29,7 +29,9 @@ Keep the reference image at its current path while you work. The project stores 
 
 ## 2. Fit the image, then align landmarks
 
-In the toolbar, keep **Image placement** selected and set **Mapping** to **Front**. Use **Move** for a rough position, scale, and rotation. A regular image should use Front mapping; **Model UV** is for an image atlas prepared for that OBJ's UV layout.
+In the toolbar, keep **Image placement** selected and set **Mapping** to **Front**. Front uses the OBJ's +Z side, which is the initial camera view. Dragging with **Move** orbits the view; it does not move the image. Use **Image position** for a rough fit, then scale and rotate it there. **Model UV** is for an image atlas prepared for that OBJ's UV layout.
+
+To put one image or live video on another side, choose **Surface**. Orbit the model with **Move**, choose **Place image**, then click or drag on the visible surface. The center handle shows the saved location; the Surface inspector adjusts scale and rotation. Switching back to Front preserves its own alignment settings. A new OBJ clears the Surface location because its coordinates refer to the old model.
 
 For a more accurate fit, choose **Align**. Click a recognizable point on the source image, then the matching point on the model. Add at least three points that are not in a straight line; eyes, nose, mouth corners, and chin are useful face landmarks. Click **Apply alignment**. The editor calculates a 17 × 17 control grid from those pairs.
 
@@ -64,6 +66,7 @@ Click the disk icon in the top bar (**Save project**, also available with Ctrl+S
 ## Common issues
 
 - **The image does not fit in Model UV:** switch **Mapping** to **Front** unless you have an atlas made for the model's UVs.
+- **The image stays on the original front while orbiting:** orbit changes only the editor camera. Choose **Surface** and **Place image** to move it onto another visible side.
 - **The alignment folds or flips:** move the affected point back or remove/recreate the image alignment pair; invalid correction cells are rejected.
 - **The preview is aligned but the physical projection is not:** use **Projector calibration** and its physical alignment points. Front → Align fits the image to the digital model only.
 - **The projector stays black:** confirm the output display and source, then click **Start projection**. Connecting a live source does not start projection automatically.

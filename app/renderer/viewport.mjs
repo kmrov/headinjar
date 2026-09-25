@@ -17,7 +17,7 @@ export function createViewport(host, callbacks={}) {
   host.append(empty,canvas,overlay,label,hint);
   const context=overlay.getContext('2d');
   let snapshot=null,tool='move',mode='placement',showGrid=true,selected=null,drag=null,maskPoints=[],maskExcluded=false,scene=null;
-  let alignmentSelection=null, alignmentDrag=null, alignmentPan=null, previewPairs=null, previewGrid=null, textureOpacity=1, uvWarning=false;
+  let alignmentSelection=null, alignmentDrag=null, alignmentPan=null, previewPairs=null, previewGrid=null, surfaceDrag=null, surfacePreview=null, textureOpacity=1, uvWarning=false;
   let physical={active:false,picking:false,pairs:[],selected:null},physicalDrag=null;
   host.tabIndex=0;
   function physicalUV(event){const b=canvas.getBoundingClientRect();return {u:Math.max(0,Math.min(1,(event.clientX-b.left)/b.width)),v:Math.max(0,Math.min(1,(event.clientY-b.top)/b.height))};}
@@ -35,7 +35,7 @@ export function createViewport(host, callbacks={}) {
     const hasMesh=Boolean(snapshot?.project.mesh);
     label.textContent=hasMesh?'OBJ preview · normalized fit':'No model loaded';
     label.style.display=tool==='align'?'none':'';
-    hint.textContent=!hasMesh?'':mode==='projector'?'Projection preview':tool==='align'?'Pick image points · wheel zoom · middle-drag pan · drag markers':tool==='grid'?'Image warp grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
+    hint.textContent=!hasMesh?'':mode==='projector'?'Projection preview':tool==='align'?'Pick image points · wheel zoom · middle-drag pan · drag markers':tool==='place'?'Click or drag on model to place image':tool==='grid'?'Image warp grid · drag a point':tool==='mask'?'Click outline · double-click to finish':'Drag to orbit · scroll to zoom';
     if(mode==='projector'&&physical.active){
       label.textContent='Projector preview';
       hint.textContent=physical.picking?'Click a point on the model':'Drag points to match the real surface';
@@ -50,7 +50,16 @@ export function createViewport(host, callbacks={}) {
         context.font='bold 12px Inter, sans-serif';context.fillStyle='#fff070';context.fillText(String(index+1),t.x+14,t.y-12);
       });
     }
-    if(!snapshot || mode!=='placement'||tool==='move')return;
+    if(snapshot && mode==='placement' && snapshot.project.placement.mappingMode==='surface'){
+      const surface=surfacePreview??snapshot.project.placement.surface;
+      const p=surface&&scene?.projectSurfacePosition(surface.position);
+      if(p){
+        context.beginPath();context.arc(p.x,p.y,10,0,Math.PI*2);
+        context.fillStyle='#a6e7bd';context.fill();context.strokeStyle='#11231b';context.lineWidth=2;context.stroke();
+        context.beginPath();context.moveTo(p.x-14,p.y);context.lineTo(p.x+14,p.y);context.moveTo(p.x,p.y-14);context.lineTo(p.x,p.y+14);context.stroke();
+      }
+    }
+    if(!snapshot || mode!=='placement'||tool==='move'||tool==='place')return;
     if(tool==='align') {
       const pairs=previewPairs??snapshot.project.placement.alignment?.pairs??[];
       pairs.forEach((pair,index)=>{
@@ -89,7 +98,11 @@ export function createViewport(host, callbacks={}) {
     }
   }
   function updateInput(){overlay.style.pointerEvents=mode==='placement'&&tool!=='move'||mode==='projector'&&physical.active?'auto':'none';scene?.setNavigation(tool==='move'&&!physical.active);draw();}
-  function clearPreview() {previewPairs=null;previewGrid=null;scene?.clearPreview();draw();}
+  function clearPreview() {previewPairs=null;previewGrid=null;surfacePreview=null;scene?.clearPreview();draw();}
+  function releaseSurfaceDrag(){
+    if(surfaceDrag && overlay.hasPointerCapture(surfaceDrag.pointerId))overlay.releasePointerCapture(surfaceDrag.pointerId);
+    surfaceDrag=null;
+  }
   function report(error){callbacks.onError?.(error);}
   function endAlignmentPan(){if(!alignmentPan)return;alignmentPan=null;scene?.endPan();}
   overlay.addEventListener('wheel',(event)=>{
@@ -111,6 +124,16 @@ export function createViewport(host, callbacks={}) {
       return;
     }
     if(!snapshot || mode!=='placement')return;
+    if(tool==='place'){
+      if(event.button!==0 || snapshot.project.placement.mappingMode!=='surface')return;
+      const surface=scene?.pickSurface(event.clientX,event.clientY,snapshot.project.placement.surface);
+      if(!surface)return;
+      event.preventDefault();host.focus({preventScroll:true});
+      surfaceDrag={pointerId:event.pointerId,latest:surface};surfacePreview=surface;
+      overlay.setPointerCapture(event.pointerId);
+      scene?.previewPlacement({...snapshot.project.placement,surface});draw();
+      return;
+    }
     if(tool==='align') {
       if(event.button===1){
         event.preventDefault();host.focus({preventScroll:true});
@@ -145,6 +168,11 @@ export function createViewport(host, callbacks={}) {
   });
   overlay.addEventListener('pointermove',(event)=>{
     if(physicalDrag){physicalDrag.point=physicalUV(event);callbacks.onPhysicalDrag?.(physicalDrag.index,physicalDrag.point,false);return;}
+    if(surfaceDrag?.pointerId===event.pointerId){
+      const surface=scene?.pickSurface(event.clientX,event.clientY,surfaceDrag.latest);
+      if(surface){surfaceDrag.latest=surface;surfacePreview=surface;scene?.previewPlacement({...snapshot.project.placement,surface});draw();}
+      return;
+    }
     if(alignmentPan){
       const dx=event.clientX-alignmentPan.x,dy=event.clientY-alignmentPan.y;
       alignmentPan={x:event.clientX,y:event.clientY};
@@ -162,6 +190,12 @@ export function createViewport(host, callbacks={}) {
   });
   overlay.addEventListener('pointerup',(event)=>{
     if(physicalDrag){const current=physicalDrag;physicalDrag=null;if(current.point)Promise.resolve(callbacks.onPhysicalDrag?.(current.index,current.point,true)).catch(report);return;}
+    if(surfaceDrag?.pointerId===event.pointerId){
+      const surface=surfaceDrag.latest;surfaceDrag=null;
+      if(overlay.hasPointerCapture(event.pointerId))overlay.releasePointerCapture(event.pointerId);
+      Promise.resolve(callbacks.onSurfacePlacement?.(surface)).catch(report).finally(clearPreview);
+      return;
+    }
     if(alignmentPan){endAlignmentPan();return;}
     if(alignmentDrag){
       const current=alignmentDrag;alignmentDrag=null;
@@ -173,7 +207,7 @@ export function createViewport(host, callbacks={}) {
     if(drag===null)return;const index=drag;drag=null;
     Promise.resolve(callbacks.onGridPoint?.(index,uv(event))).catch(report).finally(clearPreview);
   });
-  overlay.addEventListener('pointercancel',()=>{physicalDrag=null;endAlignmentPan();callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
+  overlay.addEventListener('pointercancel',()=>{physicalDrag=null;releaseSurfaceDrag();endAlignmentPan();callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
   overlay.addEventListener('lostpointercapture',endAlignmentPan);
   overlay.addEventListener('click',(event)=>{
     if(mode!=='placement'||tool!=='mask'||!snapshot||event.detail>1)return;
@@ -189,7 +223,7 @@ export function createViewport(host, callbacks={}) {
   return {
     setSnapshot(value){
       if(snapshot?.project.id!==value.project.id || snapshot?.project.revision!==value.project.revision){
-        drag=null;alignmentDrag=null;
+        drag=null;alignmentDrag=null;releaseSurfaceDrag();surfacePreview=null;
       }
       snapshot=value;previewPairs=null;previewGrid=null;
       const hasMesh=Boolean(value.project.mesh);empty.style.display=hasMesh?'none':'grid';canvas.style.display=hasMesh?'block':'none';
@@ -201,8 +235,8 @@ export function createViewport(host, callbacks={}) {
       updateInput();
     },
     setMaskExcluded(value){maskExcluded=Boolean(value);maskPoints=[];draw();},
-    setTool(value){endAlignmentPan();tool=value;maskPoints=[];drag=null;alignmentDrag=null;clearPreview();if(tool==='align')scene?.fit();updateInput();},
-    setMode(value){endAlignmentPan();mode=value;scene?.setMode(value);updateInput();},
+    setTool(value){endAlignmentPan();releaseSurfaceDrag();tool=value;maskPoints=[];drag=null;alignmentDrag=null;clearPreview();if(tool==='align')scene?.fit();updateInput();},
+    setMode(value){endAlignmentPan();releaseSurfaceDrag();clearPreview();mode=value;scene?.setMode(value);updateInput();},
     setPhysicalCalibration(value){physical=value;scene?.setCalibrationEditing(value.active);updateInput();},
     getPhysicalLandmarks(){return (snapshot?.project.placement.alignment?.pairs??[]).map(pair=>scene?.projectDomainNormalized(pair.target)).filter(Boolean);},
     setWireframe(value){scene?.setWireframe(value);},

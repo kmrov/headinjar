@@ -103,10 +103,11 @@
             <div class="canvas-heading"><button class="panel-toggle" id="toggle-sources" type="button" aria-controls="sources-panel" aria-expanded="true" aria-label="Hide sources panel" title="Hide sources panel"><i class="ph ph-sidebar-simple" aria-hidden="true"></i></button><h1 id="canvas-title">Model preview</h1><span class="scene-badge" id="canvas-badge">Placement</span></div>
             <div class="tool-switch" role="toolbar" aria-label="Placement tools">
               <button class="tool-button is-selected" type="button" data-tool="move" aria-pressed="true"><i class="ph ph-arrows-out-cardinal" aria-hidden="true"></i><span>Move</span></button>
+              <button class="tool-button" type="button" data-tool="place" aria-pressed="false" hidden><i class="ph ph-hand-pointing" aria-hidden="true"></i><span>Place image</span></button>
               <button class="tool-button" type="button" data-tool="mask" aria-pressed="false"><i class="ph ph-circle-dashed" aria-hidden="true"></i><span>Mask</span></button>
               <button class="tool-button" type="button" data-tool="align" aria-pressed="false"><i class="ph ph-crosshair" aria-hidden="true"></i><span>Align</span></button>
             </div>
-            <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="uv">Model UV</option></select></label>
+            <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="surface">Surface</option><option value="uv">Model UV</option></select></label>
           </div>
           <div class="alignment-workspace">
             <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment source image" hidden>
@@ -133,6 +134,8 @@
         <aside class="inspector" id="inspector-panel" aria-label="Inspector">
           <div class="inspector-scroll">
             <p id="mapping-uv-note" class="section-note mapping-uv-note" hidden>Model UV requires a texture made for this OBJ’s UV layout. For an ordinary image, choose Front and Align.</p>
+            <p id="mapping-front-note" class="section-note mapping-uv-note">Front uses the OBJ +Z side. Orbiting the view does not change it; choose Surface for another side.</p>
+            <p id="mapping-surface-note" class="section-note mapping-uv-note" hidden>Place one image on any visible side. Choose Place image and drag on the model. Use Move to orbit.</p>
             <section class="inspector-section placement-panel" id="placement-panel">
               <div class="inspector-title-row"><h2>Image position</h2><span class="section-index">01</span></div>
               <div class="field-row coordinate-row">
@@ -142,6 +145,14 @@
               <div class="field-row"><label for="placement-scale">Scale</label><div class="number-control wide"><input id="placement-scale" type="number" min="1" max="400" step="1" value="100" aria-label="Image scale"><small>%</small></div></div>
               <div class="field-row"><label for="placement-rotation">Rotation</label><div class="number-control rotation-control"><input id="placement-rotation" type="number" min="-180" max="180" step="0.1" value="0" aria-label="Image rotation"><small>°</small></div></div>
               <button class="text-button reset-button" id="reset-placement" type="button"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>Reset placement</button>
+            </section>
+
+            <section class="inspector-section surface-panel" id="surface-panel" hidden>
+              <div class="inspector-title-row"><h2>Surface image</h2><span class="section-index">01</span></div>
+              <p class="section-note" id="surface-status">Click the model to place the image.</p>
+              <div class="field-row"><label for="surface-scale">Scale</label><div class="number-control wide"><input id="surface-scale" type="number" min="1" max="400" step="1" value="100" aria-label="Surface image scale" disabled><small>%</small></div></div>
+              <div class="field-row"><label for="surface-rotation">Rotation</label><div class="number-control rotation-control"><input id="surface-rotation" type="number" min="-180" max="180" step="0.1" value="0" aria-label="Surface image rotation" disabled><small>°</small></div></div>
+              <button class="text-button reset-button" id="reset-surface" type="button" disabled><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>Clear placement</button>
             </section>
 
             <section class="inspector-section alignment-panel" id="alignment-panel" hidden>

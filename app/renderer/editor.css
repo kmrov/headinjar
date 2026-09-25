@@ -157,6 +157,7 @@ body.is-resizing-panels { user-select: none; cursor: col-resize; }
 .tool-switch[hidden] { display: none; }
 .tool-switch.is-muted { opacity: .46; }
 .tool-button { display: inline-flex; min-width: 72px; height: 32px; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; color: #aeb7b3; border: 1px solid transparent; border-radius: 3px; background: transparent; font-size: 11px; }
+.tool-button[hidden] { display: none; }
 .tool-button:disabled { opacity: .35; cursor: not-allowed; }
 .tool-button i { font-size: 16px; }
 .tool-button:hover { color: var(--text); background: #252b2d; }

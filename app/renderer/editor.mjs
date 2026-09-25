@@ -24,9 +24,10 @@ const ui = {
   footerDot: $('#footer-health-dot'), footerSource: $('#footer-source-label'), footerSourceDetail: $('#footer-source-detail'),
   outputStatus: $('#output-status'), outputDetail: $('#output-detail'), outputSwatch: $('#output-swatch'),
   resolution: $('#resolution-status'), canvasTitle: $('#canvas-title'), canvasBadge: $('#canvas-badge'),
-  placementPanel: $('#placement-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
+  placementPanel: $('#placement-panel'), surfacePanel: $('#surface-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
   alignmentPanel: $('#alignment-panel'), alignmentSource: $('#alignment-source-panel'), mappingMode: $('#mapping-mode'), alignmentModeNote: $('#alignment-mode-note'),
   placementX: $('#placement-x'), placementY: $('#placement-y'), placementScale: $('#placement-scale'), placementRotation: $('#placement-rotation'),
+  surfaceScale: $('#surface-scale'), surfaceRotation: $('#surface-rotation'), surfaceStatus: $('#surface-status'), resetSurface: $('#reset-surface'),
   maskCount: $('#mask-count'), maskNote: $('#mask-note'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
   hold: $('#hold-output'), projectionToggle: $('#projection-toggle'), changeDisplay: $('#change-display'),
   displayDialog: $('#display-dialog'), displayList: $('#display-list'), confirmDisplay: $('#confirm-display'),
@@ -63,7 +64,7 @@ let lastSnapshotError = null;
 alignmentPanel = createAlignmentPanel(ui.alignmentSource, ui.alignmentPanel, {
   onSourcePoint: (point) => {
     if (activeMode !== 'placement' || activeTool !== 'align') return;
-    if (snapshot?.project?.placement?.mappingMode === 'uv') {
+    if (snapshot?.project?.placement?.mappingMode !== 'front') {
       showFeedback('Switch to Front mapping to place landmarks.');
       return;
     }
@@ -239,10 +240,11 @@ function setMode(mode) {
 
 function setTool(tool) {
   pendingAlignmentSource=null;
-  activeTool = ['move', 'mask', 'align'].includes(tool) ? tool : 'move';
-  if (snapshot?.project?.placement?.mappingMode === 'uv' && activeTool !== 'move') {
+  activeTool = ['move', 'place', 'mask', 'align'].includes(tool) ? tool : 'move';
+  const mappingMode=snapshot?.project?.placement?.mappingMode??'front';
+  if ((activeTool==='place' && (mappingMode!=='surface'||!snapshot?.project?.mesh)) || (['mask','align'].includes(activeTool) && mappingMode!=='front')) {
     activeTool = 'move';
-    showFeedback('Switch to Front mapping to use Align or Mask tools.');
+    showFeedback('Choose the matching mapping mode for this tool.');
   }
   $$('.tool-button').forEach((button) => {
     const selected = button.dataset.tool === activeTool;
@@ -255,11 +257,13 @@ function setTool(tool) {
   $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
   ui.placementPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.maskPanel.hidden = activeMode === 'projector' || activeTool === 'align';
+  ui.surfacePanel.hidden = activeMode === 'projector' || mappingMode !== 'surface';
   if (activeTool === 'align') {
     viewportApi?.fit();
     if (snapshot?.project?.placement?.mappingMode === 'uv') showFeedback('Switch to Front mapping to place landmarks.');
     else showFeedback('Click a point on the image, then the matching point on the model.');
   }
+  else if (activeTool === 'place') showFeedback('Click or drag on a visible model surface to place the image. Choose Move to orbit.');
   else if (activeTool === 'mask') showFeedback(maskMode === 'exclude'
     ? 'Click around the surface to draw an excluded area, then double-click to finish.'
     : 'Click around the surface to draw the visible area, then double-click to finish.');
@@ -414,22 +418,38 @@ function alignmentPairs() {
 function renderAlignment(project = snapshot?.project) {
   if (!project || !alignmentPanel) return;
   const placement = project.placement || {};
-  const mappingMode = placement.mappingMode === 'uv' ? 'uv' : 'front';
+  const mappingMode = ['uv','surface'].includes(placement.mappingMode) ? placement.mappingMode : 'front';
+  const hasMesh=Boolean(project.mesh);
   ui.mappingMode.value = mappingMode;
+  ui.mappingMode.querySelector('option[value="surface"]').disabled=!hasMesh;
+  $('#mapping-front-note').hidden=mappingMode!=='front'||activeMode!=='placement';
   $('#mapping-uv-note').hidden=mappingMode!=='uv'||activeMode!=='placement';
+  $('#mapping-surface-note').hidden=mappingMode!=='surface'||activeMode!=='placement';
+  const front = mappingMode === 'front';
   const uv = mappingMode === 'uv';
   $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
   ui.alignmentModeNote.textContent = uv
     ? 'Model UV maps the full texture atlas. Align, Mask, and image transform controls apply to Front mapping only.'
+    : mappingMode === 'surface' ? 'Surface placement uses one movable image. Choose Place image to position it.'
     : 'Pair matching points on the image and model. Use at least three landmarks.';
   $$('.tool-button[data-tool="mask"], .tool-button[data-tool="align"]').forEach((button) => {
-    button.disabled = uv;
-    button.title = uv ? 'Available in Front mapping' : '';
+    button.disabled = !front;
+    button.title = front ? '' : 'Available in Front mapping';
   });
+  $('[data-tool="place"]').hidden = mappingMode !== 'surface';
+  $('[data-tool="place"]').disabled = !hasMesh;
   ui.placementPanel.classList.toggle('is-uv-disabled', uv);
-  [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation, $('#reset-placement')].forEach((control) => { control.disabled = uv; });
+  [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation, $('#reset-placement')].forEach((control) => { control.disabled = !front; });
   ui.maskPanel.classList.toggle('is-uv-disabled', uv);
-  if (uv && activeTool !== 'move') setTool('move');
+  ui.placementPanel.hidden = activeMode !== 'placement' || !front || activeTool === 'align';
+  ui.surfacePanel.hidden = activeMode !== 'placement' || mappingMode !== 'surface';
+  ui.maskPanel.hidden = activeMode !== 'placement' || !front || activeTool === 'align';
+  const surface=placement.surface??null;
+  ui.surfaceStatus.textContent=!hasMesh?'Import an OBJ to place the image on its surface.':surface?'Drag on the model to move this image. Choose Move to orbit.':'Click the model to place the image.';
+  ui.surfaceScale.value=formatNumber((surface?.scale??1)*100,1);
+  ui.surfaceRotation.value=formatNumber(surface?.rotation??0,1);
+  [ui.surfaceScale,ui.surfaceRotation,ui.resetSurface].forEach(control=>{control.disabled=!surface;});
+  if ((!front && ['mask','align'].includes(activeTool)) || ((!hasMesh || mappingMode!=='surface') && activeTool==='place')) setTool('move');
   alignmentPanel.render({ snapshot, pairs: placement.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: mappingMode });
 }
 
@@ -578,7 +598,12 @@ function bindEvents() {
   $('#mode-projector').addEventListener('click', () => setMode('projector'));
   $$('.tool-button').forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool)));
   $('#mapping-mode').addEventListener('change', (event) => {
-    const next = event.currentTarget.value === 'uv' ? 'uv' : 'front';
+    const next = ['uv','surface'].includes(event.currentTarget.value) ? event.currentTarget.value : 'front';
+    if (next === 'surface' && !snapshot?.project?.mesh) {
+      event.currentTarget.value = snapshot?.project?.placement?.mappingMode ?? 'front';
+      reportError(new Error('Import an OBJ before choosing Surface mapping.'));
+      return;
+    }
     if (next === 'uv' && !viewportApi?.hasUV?.()) {
       event.currentTarget.value = 'front';
       reportError(new Error('Model UV mapping is unavailable. Every model part needs UV coordinates and a matching texture atlas.'));
@@ -586,7 +611,7 @@ function bindEvents() {
     }
     safely(async () => {
       const result = await editProject({ type: 'mapping-mode', value: next });
-      if (next === 'uv') setTool('move');
+      setTool(next === 'surface' ? 'place' : 'move');
       return result;
     });
   });
@@ -607,6 +632,14 @@ function bindEvents() {
     });
   });
   [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation].forEach((input) => input.addEventListener('change', commitPlacement));
+  [ui.surfaceScale,ui.surfaceRotation].forEach(input=>input.addEventListener('change',()=>{
+    const surface=snapshot?.project?.placement?.surface;
+    if(!surface)return;
+    safely(()=>editProject({type:'surface-placement',value:{...surface,
+      scale:number(ui.surfaceScale.value,'Surface scale')/100,
+      rotation:number(ui.surfaceRotation.value,'Surface rotation')}}));
+  }));
+  ui.resetSurface.addEventListener('click',()=>safely(()=>editProject({type:'surface-placement',value:null},'Surface image placement cleared.')));
   $('#reset-placement').addEventListener('click', () => safely(() => editProject({ type: 'reset-placement' }, 'Image placement reset.')));
   ui.clearMask.addEventListener('click', () => safely(() => editProject({ type: 'mask', value: [] }, 'Coverage mask cleared.')));
   ui.maskMode.addEventListener('change', (event) => {
@@ -649,6 +682,7 @@ try {
     onPhysicalDrag: (index, point, commit) => physicalCalibration?.dragTarget(index, point, commit),
     onPhysicalCancel: () => physicalCalibration?.cancelDrag(),
     onGridPoint: (index, point) => safely(() => editProject({ type: 'grid-point', index, point })),
+    onSurfacePlacement: value => safely(() => editProject({type:'surface-placement',value})),
     onMask: (polygons) => safely(() => editProject({ type: 'mask', value: polygons })),
     onAlignmentTarget: (target) => {
       if (!pendingAlignmentSource || alignmentPairs().length >= 12) return;

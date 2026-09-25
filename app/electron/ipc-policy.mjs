@@ -1,3 +1,5 @@
+import { isSurfacePlacement } from '../src/mapping/surface.mjs';
+
 const ACTION_FIELDS = new Map([
   ['resume', ['type']],
   ['stop', ['type']],
@@ -36,6 +38,7 @@ export function isValidProjectEditCommand(command) {
     'calibration-reseed': ['type', 'value'],
     'calibration-reset': ['type'],
     'mapping-mode': ['type', 'value'],
+    'surface-placement': ['type', 'value'],
     'reset-placement': ['type'],
     projector: ['type', 'value'],
     output: ['type', 'value'],
@@ -59,7 +62,8 @@ export function isValidProjectEditCommand(command) {
   if (type === 'calibration-pairs' || type === 'calibration-apply' || type === 'calibration-reseed') {
     return validLandmarkPairs(readData(command, 'value'), type === 'calibration-apply' ? 3 : 0);
   }
-  if (type === 'mapping-mode') return ['front', 'uv'].includes(readData(command, 'value'));
+  if (type === 'mapping-mode') return ['front', 'uv', 'surface'].includes(readData(command, 'value'));
+  if (type === 'surface-placement') return isSurfacePlacement(readData(command, 'value'));
   return true;
 }
 

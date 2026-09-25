@@ -29,6 +29,19 @@ test('placement transform edit increments revision and leaves projector untouche
   assert.equal(next.past.length, 1);
 });
 
+test('surface placement is one undoable edit and a new mesh clears it', () => {
+  const placement = { position: [1, 0, 0], normal: [1, 0, 0], up: [0, 1, 0], scale: 1, rotation: 0 };
+  let history = edit(createHistory(project()), { type: 'mapping-mode', value: 'surface' });
+  history = edit(history, { type: 'surface-placement', value: placement }, 2);
+  assert.deepEqual(history.project.placement.surface, placement);
+  assert.equal(history.past.length, 2);
+  assert.equal(undoHistory(history, time(3)).project.placement.surface, null);
+  assert.deepEqual(redoHistory(undoHistory(history, time(3)), time(4)).project.placement.surface, placement);
+  history = edit(history, { type: 'mesh', value: { name: 'other.obj', obj: 'v 0 0 0\n' } }, 5);
+  assert.equal(history.project.placement.surface, null);
+  assert.equal(history.project.placement.mappingMode, 'front');
+});
+
 test('grid point, mask, reset placement, projector, reference, and output commands apply', () => {
   let history = createHistory(project());
   history = edit(history, { type: 'grid-point', index: 6, point: { u: 0.24, v: 0.24 } });

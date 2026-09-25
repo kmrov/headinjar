@@ -58,7 +58,7 @@ Start with the [illustrated beginner tutorial](docs/tutorial.md). Its screenshot
 ## Your first projection 🎯
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
-2. **Place the texture.** Use Front mapping for a front-facing image. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture.
+2. **Place the texture.** Use Front mapping for an image on the OBJ's +Z side. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture. To place one image on another side, choose **Surface**, orbit with **Move**, then click or drag the model with **Place image**.
 3. **Refine coverage.** Use Mask to limit coverage. Double-click to finish a mask contour.
 4. **Choose an output display.** Click **Choose display** in the bottom bar, select the projector, then click **Start projection**. Output opens black until explicitly started.
 5. **Match the physical object.** Open **Projector calibration** and drag its model points until their projected marks match the real surface, then click **Apply**.
@@ -71,9 +71,10 @@ For precise landmark placement in **Front → Align**, zoom the source image and
 | Mode | Use it for |
 | --- | --- |
 | **Front** | A front-facing image fitted with transforms, a control grid, masks, and landmarks. Hidden and rear-facing surfaces do not receive the image. |
+| **Surface** | One image or live video placed by clicking or dragging any visible model side. Use Move to orbit, then Place image to position it; scale and rotation are in the Surface inspector. |
 | **Model UV** | A texture atlas authored for the OBJ's original UV coordinates. Front placement controls do not apply in this mode. |
 
-A front photo cannot show the sides or back of an object. And if an OBJ has UV coordinates, a random photo still will not match its texture atlas.
+Front uses the OBJ's original +Z side; the editor camera starts there, and orbiting it does not change the mapping direction. Surface follows the selected local face and clips at sharp corners. It places a single planar image, not a whole-model texture atlas. A front photo cannot show the sides or back of an object. And if an OBJ has UV coordinates, a random photo still will not match its texture atlas.
 
 ### Physical landmark alignment
 

@@ -1,4 +1,5 @@
 import { createGrid, validateGrid } from '../mapping/grid.mjs';
+import { isSurfacePlacement } from '../mapping/surface.mjs';
 
 const MAX_OBJ_BYTES = 32 * 1024 * 1024;
 const ORIENTATIONS = new Set(['normal', 'flip-x', 'flip-y', 'rotate-180']);
@@ -99,7 +100,7 @@ function validateData(value) {
     string(value.reference.path, 'reference.path', 4096);
   }
 
-  optionalObject(value.placement, ['grid', 'transform', 'mask'], ['alignment', 'mappingMode'], 'placement');
+  optionalObject(value.placement, ['grid', 'transform', 'mask'], ['alignment', 'mappingMode', 'surface'], 'placement');
   object(value.placement.grid, ['columns', 'rows', 'points'], 'placement.grid');
   dataArray(value.placement.grid.points, 'placement.grid.points');
   for (const point of value.placement.grid.points) object(point, ['u', 'v'], 'grid point');
@@ -137,9 +138,10 @@ function validateData(value) {
       }
     }
   }
-  if (Object.hasOwn(value.placement, 'mappingMode') && !['front', 'uv'].includes(value.placement.mappingMode)) {
-    fail('placement.mappingMode must be front or uv');
+  if (Object.hasOwn(value.placement, 'mappingMode') && !['front', 'uv', 'surface'].includes(value.placement.mappingMode)) {
+    fail('placement.mappingMode must be front, uv, or surface');
   }
+  if (Object.hasOwn(value.placement, 'surface') && !isSurfacePlacement(value.placement.surface)) fail('placement.surface is invalid');
 
   optionalObject(value.projector, ['position', 'rotation', 'fov', 'offset', 'model'], ['calibration'], 'projector');
   vector(value.projector.position, 3, 'projector.position');
@@ -205,6 +207,10 @@ function detached(value) {
       mask: value.placement.mask.map(({ excluded, points }) => ({ excluded, points: points.map(({ u, v }) => ({ u, v })) })),
       ...(Object.hasOwn(value.placement, 'alignment') ? { alignment: { pairs: value.placement.alignment.pairs.map(({ source, target }) => ({ source: { u: source.u, v: source.v }, target: { u: target.u, v: target.v } })) } } : {}),
       ...(Object.hasOwn(value.placement, 'mappingMode') ? { mappingMode: value.placement.mappingMode } : {}),
+      ...(Object.hasOwn(value.placement, 'surface') ? { surface: value.placement.surface === null ? null : {
+        position: [...value.placement.surface.position], normal: [...value.placement.surface.normal], up: [...value.placement.surface.up],
+        scale: value.placement.surface.scale, rotation: value.placement.surface.rotation,
+      } } : {}),
     },
     projector: {
       position: [...value.projector.position], rotation: [...value.projector.rotation], fov: value.projector.fov,
@@ -225,7 +231,7 @@ export function createProject({ id, name, now }) {
   const project = {
     version: 1, id, name, revision: 0, createdAt: now, updatedAt: now,
     mesh: null, reference: null,
-    placement: { grid: createGrid(5, 5), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, mask: [], alignment: { pairs: [] }, mappingMode: 'front' },
+    placement: { grid: createGrid(5, 5), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, mask: [], alignment: { pairs: [] }, mappingMode: 'front', surface: null },
     projector: { position: [0, 0, 3], rotation: [0, 0, 0], fov: 45, offset: [0, 0], model: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 1 }, calibration: { pairs: [], grid: createGrid(2, 2) } },
     output: { width: 1920, height: 1080, displayId: null }, source: null,
   };

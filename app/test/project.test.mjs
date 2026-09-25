@@ -52,6 +52,24 @@ test('round-trips optional alignment and mapping mode while accepting legacy pro
   ]) assert.equal(validateProject({ ...project, placement: invalid }).valid, false);
 });
 
+test('surface placement round-trips while older projects without it remain valid', () => {
+  const project = createProject({ id: 'p-surface', name: 'Side', now });
+  const legacy = structuredClone(project);
+  delete legacy.placement.surface;
+  assert.equal(validateProject(legacy).valid, true);
+  assert.deepEqual(parseProject(serializeProject(legacy)).placement, legacy.placement);
+  project.placement.mappingMode = 'surface';
+  project.placement.surface = { position: [1, 2, 3], normal: [1, 0, 0], up: [0, 1, 0], scale: 1.5, rotation: 20 };
+  assert.deepEqual(parseProject(serializeProject(project)).placement, project.placement);
+  for (const surface of [
+    { ...project.placement.surface, normal: [0, 0, 0] },
+    { ...project.placement.surface, up: [1, 0, 0] },
+    { ...project.placement.surface, position: [NaN, 2, 3] },
+    { ...project.placement.surface, scale: 0 },
+    { ...project.placement.surface, extra: true },
+  ]) assert.equal(validateProject({ ...project, placement: { ...project.placement, surface } }).valid, false);
+});
+
 test('alignment schema rejects accessors, sparse arrays, unknown keys, and invalid coordinates', () => {
   const make = () => createProject({ id: 'p-1', name: 'Head', now });
   const withThreePairs = make();

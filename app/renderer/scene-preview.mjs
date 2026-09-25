@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createProjectionWarp } from './projection-warp.mjs';
+import { surfaceFromHit, surfaceProjectionFrame } from '../src/mapping/surface.mjs';
 
 const MIN_MODEL_ZOOM = 1;
 const MAX_MODEL_ZOOM = 8;
@@ -20,7 +21,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const pivot = new THREE.Group();
   scene.add(pivot);
   let meshKey = null, model = null, snapshot = null, mode = 'placement', wireframe = false, navigation = true, calibrationEditing = false;
-  let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, videoSourceRequired = false, gridTexture = null, frontDepthTarget = null;
+  let textureKey = null, sourceTexture = null, videoTexture = null, videoCanvas = null, videoContext = null, videoSourceActive = false, videoSourceRequired = false, gridTexture = null, frontDepthTarget = null, depthKey = null;
   let sourceGeneration = 0, disposed = false, hasModelUV = false, modelBounds = null;
   let panDepth = null;
   const maskCanvas = document.createElement('canvas');
@@ -30,19 +31,24 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const uniforms = {
     image: {value:null}, grid: {value:null}, coverage:{value:maskTexture}, frontDepth:{value:null}, hasImage:{value:false},
     gridSize:{value:new THREE.Vector2(5,5)}, boundsMin:{value:new THREE.Vector2()},
-    boundsSize:{value:new THREE.Vector2(1,1)}, boundsDepth:{value:new THREE.Vector2()}, translation:{value:new THREE.Vector2()},
-    imageScale:{value:1}, angle:{value:0}, textureOpacity:{value:1}, useModelUV:{value:false}, uvAvailable:{value:false},
+    boundsSize:{value:new THREE.Vector2(1,1)}, translation:{value:new THREE.Vector2()},
+    imageScale:{value:1}, angle:{value:0}, textureOpacity:{value:1}, useModelUV:{value:false}, useSurface:{value:false}, surfacePlaced:{value:false}, uvAvailable:{value:false},
+    planeOrigin:{value:new THREE.Vector3()}, planeRight:{value:new THREE.Vector3(1,0,0)}, planeUp:{value:new THREE.Vector3(0,1,0)},
+    planeNormal:{value:new THREE.Vector3(0,0,1)}, planeSize:{value:new THREE.Vector2(1,1)}, depthMin:{value:0}, depthRange:{value:1},
   };
   const material = new THREE.ShaderMaterial({
     defines: projection ? { PROJECTION_OUTPUT: 1 } : {},
     uniforms, side:THREE.FrontSide,
-    vertexShader:`varying vec3 surfaceNormal; varying vec2 modelUV; varying vec2 domain; varying float modelDepth; varying float modelNormalZ; uniform vec2 boundsMin; uniform vec2 boundsSize; uniform vec2 boundsDepth;
-      void main(){modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);modelNormalZ=normal.z;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);modelDepth=(position.z-boundsDepth.x)/boundsDepth.y;
+    vertexShader:`varying vec3 surfaceNormal; varying vec3 localPosition; varying vec3 localNormal; varying vec2 modelUV; varying vec2 domain; uniform vec2 boundsMin; uniform vec2 boundsSize;
+      void main(){modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);localPosition=position;localNormal=normal;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`precision highp float;
-      varying vec3 surfaceNormal; varying vec2 modelUV; varying vec2 domain; varying float modelDepth; varying float modelNormalZ; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
-      uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool uvAvailable; uniform float textureOpacity;
-      const float FRONT_DEPTH_EPSILON=0.004;
+      varying vec3 surfaceNormal; varying vec3 localPosition; varying vec3 localNormal; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
+      uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
+      uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange;
+      // Two 8-bit channels keep the visibility bias below one tenth of a millimeter
+      // on a two-meter-deep model, instead of leaking onto nearby inner layers.
+      const float FRONT_DEPTH_EPSILON=2.0/65535.0;
       vec2 at(vec2 p){return texture2D(grid,(p+0.5)/gridSize).xy;}
       void main(){
         // Camera-space studio lighting keeps relief readable while orbiting.
@@ -53,8 +59,16 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           light=1.0;
         #endif
         // Compare in original model space so orbit and projector poses do not change visibility.
-        if(hasImage && !useModelUV){vec4 front=texture2D(frontDepth,vec2(domain.x,1.0-domain.y));
-          if(modelNormalZ<=0.0 || front.a<0.5 || modelDepth<front.r-FRONT_DEPTH_EPSILON){
+        vec2 projectedDomain=domain;
+        if(useSurface){vec3 relative=localPosition-planeOrigin;
+          projectedDomain=vec2(0.5+dot(relative,planeRight)/planeSize.x,0.5-dot(relative,planeUp)/planeSize.y);
+        }
+        if(hasImage && !useModelUV){
+          float facing=useSurface?dot(normalize(localNormal),planeNormal):localNormal.z;
+          float modelDepth=(dot(localPosition-planeOrigin,planeNormal)-depthMin)/depthRange;
+          vec4 front=texture2D(frontDepth,vec2(projectedDomain.x,1.0-projectedDomain.y));
+          float nearestDepth=dot(front.rg,vec2(256.0,1.0))/257.0;
+          if((useSurface && !surfacePlaced) || facing<=0.0 || front.a<0.5 || modelDepth<nearestDepth-FRONT_DEPTH_EPSILON){
             gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light,1.0);
             #ifdef PROJECTION_OUTPUT
               gl_FragColor=vec4(0.,0.,0.,1.);
@@ -77,6 +91,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
         uv=(uv-0.5-translation)/imageScale; float c=cos(angle),s=sin(angle);
         uv=vec2(c*uv.x+s*uv.y,-s*uv.x+c*uv.y)+0.5;
         float mask=texture2D(coverage,vec2(d.x,1.-d.y)).r;
+        if(useSurface){uv=projectedDomain;mask=1.0;}
         if(useModelUV){uv=vec2(modelUV.x,1.-modelUV.y);mask=1.0;}
         if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.)))||mask<0.5){gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light*(1.-textureOpacity),1.);
           #include <colorspace_fragment>
@@ -87,21 +102,41 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
       }`,
   });
   const frontCaptureMaterial = new THREE.ShaderMaterial({
-    uniforms:{boundsMin:{value:uniforms.boundsMin.value},boundsSize:{value:uniforms.boundsSize.value},boundsDepth:{value:uniforms.boundsDepth.value}},
-    vertexShader:`uniform vec2 boundsMin; uniform vec2 boundsSize; uniform vec2 boundsDepth; varying float depthValue;
-      void main(){float x=(position.x-boundsMin.x)/boundsSize.x;float y=(position.y-boundsMin.y)/boundsSize.y;
-        depthValue=(position.z-boundsDepth.x)/boundsDepth.y;gl_Position=vec4(x*2.0-1.0,y*2.0-1.0,1.0-depthValue*2.0,1.0);}`,
-    fragmentShader:`precision highp float; varying float depthValue; void main(){gl_FragColor=vec4(depthValue,0.0,0.0,1.0);}`,
-    depthTest:true,depthWrite:true,
+    uniforms:{planeOrigin:uniforms.planeOrigin,planeRight:uniforms.planeRight,planeUp:uniforms.planeUp,
+      planeNormal:uniforms.planeNormal,planeSize:uniforms.planeSize,depthMin:uniforms.depthMin,depthRange:uniforms.depthRange},
+    vertexShader:`uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec2 planeSize; uniform vec3 planeNormal; uniform float depthMin; uniform float depthRange;
+      varying float depthValue; varying float normalFacing;
+      void main(){vec3 relative=position-planeOrigin;
+        float x=0.5+dot(relative,planeRight)/planeSize.x;float y=0.5+dot(relative,planeUp)/planeSize.y;
+        depthValue=(dot(relative,planeNormal)-depthMin)/depthRange;normalFacing=dot(normal,planeNormal);
+        gl_Position=vec4(x*2.0-1.0,y*2.0-1.0,1.0-depthValue*2.0,1.0);}`,
+    fragmentShader:`precision highp float; varying float depthValue; varying float normalFacing;
+      void main(){
+        if(normalFacing<=0.0)discard;
+        float packed=floor(clamp(depthValue,0.0,1.0)*65535.0+0.5);
+        float high=floor(packed/256.0);
+        gl_FragColor=vec4(high/255.0,(packed-high*256.0)/255.0,0.0,1.0);
+      }`,
+    depthTest:true,depthWrite:true,side:THREE.DoubleSide,
   });
   const frontCaptureScene=new THREE.Scene();
   const frontCaptureCamera=new THREE.Camera();
-  function captureFrontDepth(source) {
-    frontDepthTarget?.dispose();
-    frontDepthTarget=new THREE.WebGLRenderTarget(2048,2048,{
+  function captureFrontDepth(frame) {
+    if (!model || !frame) return;
+    const nextKey=JSON.stringify(frame);
+    if (nextKey===depthKey) return;
+    depthKey=nextKey;
+    if (!frontDepthTarget) frontDepthTarget=new THREE.WebGLRenderTarget(2048,2048,{
       format:THREE.RGBAFormat,type:THREE.UnsignedByteType,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter,depthBuffer:true,
     });
-    source.traverse(child=>{if(child.isMesh){
+    uniforms.planeOrigin.value.fromArray(frame.origin);
+    uniforms.planeRight.value.fromArray(frame.right);
+    uniforms.planeUp.value.fromArray(frame.up);
+    uniforms.planeNormal.value.fromArray(frame.normal);
+    uniforms.planeSize.value.set(frame.width,frame.height);
+    uniforms.depthMin.value=frame.depthMin;
+    uniforms.depthRange.value=frame.depthRange;
+    model.traverse(child=>{if(child.isMesh){
       const captureMesh=new THREE.Mesh(child.geometry,frontCaptureMaterial);
       // The shader remaps raw position directly to clip space, so Three's CPU bounds are unrelated.
       captureMesh.frustumCulled=false;
@@ -117,7 +152,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     if (!model) return;
     model.traverse((child) => { if(child.isMesh) child.geometry.dispose(); });
     pivot.remove(model); model = null; modelBounds=null; hasModelUV=false;
-    frontDepthTarget?.dispose();frontDepthTarget=null;uniforms.frontDepth.value=null;
+    frontDepthTarget?.dispose();frontDepthTarget=null;depthKey=null;uniforms.frontDepth.value=null;
   }
   function loadModel(mesh) {
     if(mesh?.obj === meshKey) return;
@@ -144,10 +179,9 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     uniforms.uvAvailable.value=hasModelUV;
     uniforms.boundsMin.value.set(box.min.x,box.min.y);
     uniforms.boundsSize.value.set(Math.max(size.x,1e-9),Math.max(size.y,1e-9));
-    uniforms.boundsDepth.value.set(box.min.z,Math.max(size.z,1e-9));
     const scale=2/Math.max(size.x,size.y,size.z);
     next.position.copy(center).multiplyScalar(-scale); next.scale.setScalar(scale);
-    model=next; pivot.add(next);captureFrontDepth(next);fit();
+    model=next; pivot.add(next);fit();
   }
   function applyImageSource() {
     const texture = videoSourceActive ? videoTexture : videoSourceRequired ? null : sourceTexture;
@@ -168,6 +202,17 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   function updateMapping(project) {
     const {grid,transform,mask}=project.placement;
     uniforms.useModelUV.value=project.placement.mappingMode==='uv';
+    uniforms.useSurface.value=project.placement.mappingMode==='surface';
+    uniforms.surfacePlaced.value=Boolean(project.placement.surface);
+    if (model && modelBounds && project.placement.mappingMode !== 'uv') {
+      const min=modelBounds.min,max=modelBounds.max;
+      const frame=project.placement.mappingMode==='surface'
+        ? project.placement.surface && surfaceProjectionFrame(project.placement.surface,
+          {min:min.toArray(),max:max.toArray()})
+        : {origin:[(min.x+max.x)/2,(min.y+max.y)/2,min.z],right:[1,0,0],up:[0,1,0],normal:[0,0,1],
+          width:Math.max(max.x-min.x,1e-9),height:Math.max(max.y-min.y,1e-9),depthMin:0,depthRange:Math.max(max.z-min.z,1e-9)};
+      if (frame) captureFrontDepth(frame);
+    }
     const values=new Float32Array(grid.points.length*4);
     grid.points.forEach((point,i)=>{values[i*4]=point.u;values[i*4+1]=point.v;values[i*4+3]=1;});
     gridTexture?.dispose();
@@ -199,6 +244,26 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     ray.setFromCamera(new THREE.Vector2((clientX-rect.left)/rect.width*2-1,1-(clientY-rect.top)/rect.height*2),camera);
     const hit=ray.intersectObject(model,true)[0];
     return hit ? domainOf(hit.point) : null;
+  }
+  function pickSurface(clientX,clientY,previous=null) {
+    if (!model || mode!=='placement') return null;
+    scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+    const rect=canvas.getBoundingClientRect();
+    const ray=new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((clientX-rect.left)/rect.width*2-1,1-(clientY-rect.top)/rect.height*2),camera);
+    const hit=ray.intersectObject(model,true)[0];
+    if (!hit?.normal && !hit?.face?.normal) return null;
+    const point=model.worldToLocal(hit.point.clone());
+    const childToModel=new THREE.Matrix4().copy(model.matrixWorld).invert().multiply(hit.object.matrixWorld);
+    const normal=(hit.normal??hit.face.normal).clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(childToModel)).normalize();
+    return surfaceFromHit(point.toArray(),normal.toArray(),previous);
+  }
+  function projectSurfacePosition(position) {
+    if (!model || !Array.isArray(position)) return null;
+    scene.updateMatrixWorld(true);camera.updateMatrixWorld(true);
+    const projected=model.localToWorld(new THREE.Vector3().fromArray(position)).project(camera);
+    if(projected.z < -1 || projected.z > 1) return null;
+    return {x:(projected.x+1)*canvas.clientWidth/2,y:(1-projected.y)*canvas.clientHeight/2};
   }
   function zoomAt(clientX,clientY,factor) {
     if(disposed || projection || mode!=='placement' || !model || !Number.isFinite(factor) || factor<=0) return false;
@@ -322,7 +387,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},
     setNavigation(value){navigation=value;controls.enabled=value&&mode==='placement';},
     setCalibrationEditing(value){calibrationEditing=Boolean(value);draw();},
-    pick, projectDomain, projectDomainNormalized, zoomAt, beginPan, panBy, endPan,
+    pick, pickSurface, projectSurfacePosition, projectDomain, projectDomainNormalized, zoomAt, beginPan, panBy, endPan,
     hasUV(){return hasModelUV;},
     setTextureOpacity(value){uniforms.textureOpacity.value=Math.max(0,Math.min(1,Number(value)));draw();},
     previewPlacement(placement){if(snapshot){updateMapping({...snapshot.project,placement});draw();}},

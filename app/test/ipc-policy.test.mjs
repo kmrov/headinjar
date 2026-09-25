@@ -55,6 +55,18 @@ test('allows only renderer-owned project commands and rejects imported file comm
   assert.equal(isValidProjectEditCommand({ type: 'placement-transform', value: { x: 0, y: 0, scale: 0, rotation: 0 } }), false);
 });
 
+test('surface placement IPC accepts a finite frame and rejects malformed or accessor data', () => {
+  const value = { position: [1, 0, 0], normal: [1, 0, 0], up: [0, 1, 0], scale: 1, rotation: 0 };
+  assert.equal(isValidProjectEditCommand({ type: 'mapping-mode', value: 'surface' }), true);
+  assert.equal(isValidProjectEditCommand({ type: 'surface-placement', value }), true);
+  assert.equal(isValidProjectEditCommand({ type: 'surface-placement', value: null }), true);
+  assert.equal(isValidProjectEditCommand({ type: 'surface-placement', value: { ...value, normal: [0, 0, 0] } }), false);
+  assert.equal(isValidProjectEditCommand({ type: 'surface-placement', value, extra: 1 }), false);
+  const accessor = { ...value };
+  Object.defineProperty(accessor, 'position', { get() { throw new Error('must not run'); } });
+  assert.equal(isValidProjectEditCommand({ type: 'surface-placement', value: accessor }), false);
+});
+
 test('validates exact alignment pair and mapping mode IPC commands', () => {
   const pairs = [
     { source: { u: 0, v: 0 }, target: { u: 0, v: 0 } },

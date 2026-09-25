@@ -1,6 +1,7 @@
 import { createProject, validateProject } from './model.mjs';
 import { createGrid, moveGridPoint } from '../mapping/grid.mjs';
 import { fitLandmarkGrid } from '../mapping/alignment.mjs';
+import { isSurfacePlacement } from '../mapping/surface.mjs';
 
 const HISTORY_LIMIT = 30;
 
@@ -66,7 +67,7 @@ function applyCommand(project, command) {
       project.placement.alignment = { pairs: command.value };
       break;
     case 'alignment-apply': {
-      if (project.placement.mappingMode === 'uv') throw new RangeError('Alignment can only be applied in front mapping mode');
+      if (project.placement.mappingMode !== 'front') throw new RangeError('Alignment can only be applied in front mapping mode');
       const grid = fitLandmarkGrid(command.value);
       project.placement.alignment = { pairs: command.value };
       project.placement.grid = grid;
@@ -75,6 +76,9 @@ function applyCommand(project, command) {
     }
     case 'mapping-mode':
       project.placement.mappingMode = command.value;
+      break;
+    case 'surface-placement':
+      project.placement.surface = command.value;
       break;
     case 'reset-placement':
       project.placement = createProject({ id: project.id, name: project.name, now: project.createdAt }).placement;
@@ -187,6 +191,7 @@ function validateCommand(command) {
     'calibration-reseed': ['type', 'value'],
     'calibration-reset': ['type'],
     'mapping-mode': ['type', 'value'],
+    'surface-placement': ['type', 'value'],
     'reset-placement': ['type'],
     projector: ['type', 'value'],
     mesh: ['type', 'value'],
@@ -212,8 +217,11 @@ function validateCommand(command) {
   if (typeDescriptor.value === 'calibration-pairs' || typeDescriptor.value === 'calibration-apply' || typeDescriptor.value === 'calibration-reseed') {
     validateLandmarkPairs(readDataProperty(command, 'value'), typeDescriptor.value === 'calibration-apply' ? 3 : 0);
   }
-  if (typeDescriptor.value === 'mapping-mode' && !['front', 'uv'].includes(readDataProperty(command, 'value'))) {
-    throw new RangeError('Mapping mode must be front or uv');
+  if (typeDescriptor.value === 'mapping-mode' && !['front', 'uv', 'surface'].includes(readDataProperty(command, 'value'))) {
+    throw new RangeError('Mapping mode must be front, uv, or surface');
+  }
+  if (typeDescriptor.value === 'surface-placement' && !isSurfacePlacement(readDataProperty(command, 'value'))) {
+    throw new RangeError('Surface placement is invalid');
   }
 }
 
