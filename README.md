@@ -22,11 +22,23 @@ Electron · Three.js · JavaScript
 - Control the second display with **Resume**, **Hold**, **Blackout**, and **Stop**.
 - Save your project, recover an interrupted session, and undo or redo edits.
 
-This is still early software. You can use static images or one live WebRTC source. The desktop setup tested so far is Linux with X11/XWayland; packaged macOS builds still need a real-device check.
+This is still early software. You can use static images or one live WebRTC source. The desktop setup has been tested on Linux with X11/XWayland. A macOS user has opened the unsigned package, but physical projector behavior on macOS still needs a real-device check.
 
 ## Downloads
 
-Versioned builds are published on the [Releases page](https://github.com/kmrov/headinjar/releases): AppImage and `.deb` for Linux x64, plus `.dmg` and `.zip` for both Intel and Apple Silicon Macs. Bring your own OBJ and image; no model or texture is bundled. macOS builds are currently unsigned and unnotarized. If macOS blocks one you trust, follow [Apple's Open Anyway instructions](https://support.apple.com/en-us/102445). Physical projector behavior on macOS still needs a real-device check.
+Versioned builds are published on the [Releases page](https://github.com/kmrov/headinjar/releases): AppImage and `.deb` for Linux x64, plus `.dmg` and `.zip` for both Intel and Apple Silicon Macs. Bring your own OBJ and image; no model or texture is bundled.
+
+### macOS first launch
+
+The macOS packages are currently unsigned and unnotarized. Download the package for your Mac from the official Releases page, copy **Head in Jar.app** to Applications, and try opening it. If macOS offers **Open Anyway** in System Settings → Privacy & Security, follow [Apple's instructions](https://support.apple.com/en-us/102445).
+
+If macOS instead says the app is “damaged” and offers no **Open Anyway** button, a user has confirmed that clearing the download quarantine from this trusted copy allows it to open:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Head in Jar.app"
+```
+
+This removes Gatekeeper's download check for that copy; it does not verify the package or sign the app. Use it only for an app you obtained directly from this project's Releases page and trust. If the `.dmg` itself will not open, download it again instead. Signing and notarization are needed to avoid this manual step in future releases.
 
 ## Get started 🚀
 
