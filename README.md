@@ -1,6 +1,6 @@
 <div align="center">
 
-# Head in Jar
+# Head in Jar 🫙
 
 Fit an image to a 3D model, then line it up with the object you're projecting onto.
 
