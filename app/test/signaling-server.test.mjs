@@ -149,24 +149,27 @@ test('aborts the request-owned offer when the client disconnects or its deadline
     assert.equal(timedOut, true);
   });
 
-  let bodyTimedOut = false;
   await withServer({
     bodyTimeoutMs: 20,
     acceptOffer: async () => assert.fail('must not accept incomplete request body'),
   }, async server => {
-    const request = http.request(`${server.origin}/api/offer`, {
-      method: 'POST', headers: {
-        authorization: `Bearer ${server.token}`, 'content-type': 'application/json', 'content-length': '100',
-      },
-    }, response => {
-      bodyTimedOut = response.statusCode === 504;
-      response.resume();
+    let request;
+    const responseStatus = new Promise((resolve, reject) => {
+      request = http.request(`${server.origin}/api/offer`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(2_000),
+        headers: {
+          authorization: `Bearer ${server.token}`, 'content-type': 'application/json', 'content-length': '100',
+        },
+      }, response => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      request.once('error', reject);
+      request.write('{');
     });
-    request.on('error', () => {});
-    request.write('{');
-    await new Promise(resolve => setTimeout(resolve, 50));
-    assert.equal(bodyTimedOut, true);
-    request.destroy();
+    try { assert.equal(await responseStatus, 504); }
+    finally { request.destroy(); }
   });
 });
 
