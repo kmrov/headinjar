@@ -14,20 +14,54 @@ test-results/
 Thumbs.db
 
 # User assets and saved projects
-models/
+/models/
+/local-data/
+/textures/
+/media/
 *.obj
 *.mtl
+*.fbx
+*.glb
+*.gltf
+*.blend
+*.stl
 *.mapping.json
 *.recovery.json
 
+# Local workspaces, reference projects, history and agent state
+/mapmap/
+/splash/
+/.publish/
+/.local-history/
+/.superpowers/
+/.worktrees/
+.agents/
+.codex/
+
 # Local working notes
-tasks/
+/tasks/
 docs/*
 !docs/tutorial.md
 !docs/tutorial/
 docs/tutorial/*
 !docs/tutorial/assets/
 !docs/tutorial/assets/*
-AGENTS.md
-.agents/
-.codex/
+
+# Additional local guides, test fixtures and hardware smoke scripts
+/app/README.md
+/app/README.ru.md
+/app/design-qa.md
+/app/design-qa.ru.md
+/app/renderer/assets/
+/app/renderer/harness.css
+/app/renderer/harness.html
+/app/renderer/harness.mjs
+/app/scripts/smoke-alignment.mjs
+/app/scripts/smoke-front-visibility.mjs
+/app/scripts/smoke-live-preview.mjs
+/app/scripts/smoke-physical-calibration.mjs
+/app/scripts/smoke-projector.mjs
+/app/scripts/smoke-signaling.mjs
+/app/scripts/smoke-simple-calibration.mjs
+/app/scripts/smoke-webrtc.mjs
+/app/scripts/smoke-whip.mjs
