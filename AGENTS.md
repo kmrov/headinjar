@@ -8,6 +8,8 @@ Keep models, textures, saved projects, and other user data locally in `models/` 
 
 You may edit files, run checks, and prepare a diff without separate approval. **Get explicit user approval for the specific changes, branch, and remote before each `git commit` and `git push`.** The same applies to tags and releases. If the user explicitly asks you to commit and push the current work, that request authorizes those actions for that work only.
 
+After finishing development of a feature, ask the user whether to push the completed changes. Do not assume a feature request authorizes a push.
+
 ## Reference projects
 
 Use `mapmap/` and `splash/` only as references. Do not copy or directly reuse their code or assets, add them as dependencies, modify them, or add them to this Git repository, including through a submodule or forced `git add`. Implement the new application independently in `app/`.

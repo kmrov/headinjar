@@ -10,20 +10,20 @@ import { createWebRTCPanel } from './webrtc-panel.mjs';
 import { createEditorWebRTCSource } from './editor-webrtc-source.mjs';
 import { createWebRTCReceiver } from './webrtc-receiver.mjs';
 import { createFramePublisher } from './media-frame-channel.mjs';
+import { createWorkspaceLayout } from './workspace-layout.mjs';
 
 const desktop = window.desktop;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const ui = {
   name: $('#project-name'), saveState: $('#save-state'), feedback: $('#feedback'), error: $('#error-region'),
-  modelName: $('#model-name'), modelState: $('#model-state'), modelCaption: $('#model-caption'),
+  modelName: $('#model-name'), modelState: $('#model-state'), modelAction: $('#model-action-label'),
   referenceName: $('#reference-name'), referenceState: $('#reference-state'), referenceThumb: $('#reference-thumb'),
   referenceEmpty: $('#reference-empty'), referenceEmptyLabel: $('#reference-empty-label'), referenceAction: $('#reference-action-label'), referenceWarning: $('#reference-warning'),
   sourceStatus: $('#source-status'), sourceDetail: $('#source-detail'), sourceHealth: $('#source-health'),
   footerDot: $('#footer-health-dot'), footerSource: $('#footer-source-label'), footerSourceDetail: $('#footer-source-detail'),
   outputStatus: $('#output-status'), outputDetail: $('#output-detail'), outputSwatch: $('#output-swatch'),
   resolution: $('#resolution-status'), canvasTitle: $('#canvas-title'), canvasBadge: $('#canvas-badge'),
-  modelPreview: $('.model-preview'), loadedModelMark: $('#loaded-model-mark'),
   placementPanel: $('#placement-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
   alignmentPanel: $('#alignment-panel'), alignmentSource: $('#alignment-source-panel'), mappingMode: $('#mapping-mode'), alignmentModeNote: $('#alignment-mode-note'),
   placementX: $('#placement-x'), placementY: $('#placement-y'), placementScale: $('#placement-scale'), placementRotation: $('#placement-rotation'),
@@ -35,6 +35,12 @@ const ui = {
   webrtcPreviewFreeze: $('#webrtc-preview-freeze'), webrtcPreviewStatus: $('#webrtc-preview-status'),
   webrtcVideo: $('#webrtc-video'),
 };
+
+const workspaceLayout = createWorkspaceLayout({
+  workspace: $('.workspace'), sources: $('#sources-panel'), sourceDivider: $('#source-divider'),
+  inspector: $('#inspector-panel'), inspectorDivider: $('#inspector-divider'),
+  toggle: $('#toggle-sources'),
+});
 
 let snapshot = null;
 let activeMode = 'placement';
@@ -277,11 +283,10 @@ function renderProject(project) {
 
   const mesh = project.mesh;
   ui.modelName.textContent = mesh?.name || 'No model loaded';
+  ui.modelName.title = mesh?.name || '';
   ui.modelState.textContent = mesh ? 'Loaded' : 'Required';
   ui.modelState.classList.toggle('is-ready', Boolean(mesh));
-  ui.modelPreview.classList.toggle('has-model', Boolean(mesh));
-  ui.loadedModelMark.querySelector('span').textContent = mesh ? 'OBJ model loaded' : 'No model loaded';
-  ui.modelCaption.textContent = mesh ? '' : 'Import an OBJ to begin';
+  ui.modelAction.textContent = mesh ? 'Replace OBJ' : 'Import OBJ';
 
   const reference = project.reference;
   ui.referenceName.textContent = reference?.path?.split(/[\\/]/).at(-1) || 'Reference image';
@@ -760,6 +765,7 @@ safely(async () => {
   }
 });
 window.addEventListener('beforeunload', () => {
+  workspaceLayout.destroy();
   editorWebRTCSource?.close();
   alignmentPanel?.destroy();
 }, { once: true });
