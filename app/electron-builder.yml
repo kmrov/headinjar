@@ -5,6 +5,8 @@ directories:
   output: release
 asar: true
 files:
+  - build/icon.png
+  - build/icon.svg
   - dist/**/*
   - electron/**/*
   - renderer/*.html
@@ -14,6 +16,7 @@ files:
   - package.json
   - '!dist/**/*.map'
 linux:
+  icon: build/icons
   category: Graphics
   maintainer: Nikita Komarov <nikita@kmrov.ru>
   syncDesktopName: true
@@ -23,6 +26,7 @@ linux:
     - AppImage
     - deb
 mac:
+  icon: build/icon.icns
   identity: null
   target:
     - dmg

@@ -11,6 +11,7 @@ import { createSignalingOfferGate } from './signaling-integration.mjs';
 import { startSignalingServer } from './signaling-server.mjs';
 
 const editorUrl = new URL('../renderer/editor.html', import.meta.url).href;
+const appIcon = fileURLToPath(new URL('../build/icon.png', import.meta.url));
 const mediaChannel = randomUUID();
 let editorWindow;
 let outputWindow;
@@ -309,7 +310,7 @@ function registerIpc() {
     outputState = transitionOutput(outputState, { type: 'display-confirmed', confirmed: true });
     outputWindow = new BrowserWindow({
       x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
-      show: false, frame: false, backgroundColor: '#000000', autoHideMenuBar: true,
+      show: false, frame: false, backgroundColor: '#000000', autoHideMenuBar: true, icon: appIcon,
       webPreferences: { preload: fileURLToPath(new URL('./output-preload.cjs', import.meta.url)), sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
     });
     const win = outputWindow;
@@ -381,7 +382,7 @@ function registerIpc() {
 
 function createEditor() {
   editorWindow = new BrowserWindow({
-    width: 1440, height: 960, minWidth: 900, minHeight: 640, show: false,
+    width: 1440, height: 960, minWidth: 900, minHeight: 640, show: false, icon: appIcon,
     webPreferences: {
       preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
