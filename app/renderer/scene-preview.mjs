@@ -93,13 +93,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           vec2 frontUv=frontClip.xy/frontClip.w*0.5+0.5;
           vec2 front=sampledFrontDepth(frontUv);
           bool frontOccluded=front.y<0.5 || modelDepth<front.x-FRONT_DEPTH_EPSILON;
-          // Continue the image across a side or underside hidden from the
-          // front capture. Small nearly parallel layers stay occluded; a
-          // surface far behind the front can use the same image coordinates.
-          // Use the triangle normal because imported smooth normals on scans
-          // can disagree with the visible triangle.
+          // Continue the image across connected sides and undersides hidden
+          // from the front capture, but never across the rear-facing shell.
+          // Imported smooth normals can disagree with the visible triangle.
           vec3 faceNormal=normalize(cross(dFdx(localPosition),dFdy(localPosition)));
           bool extendFront=!useSurface && frontWrapSurface>0.5
+            && dot(faceNormal,planeNormal)>-0.2
             && (dot(faceNormal,planeNormal)<0.9 || (front.y>=0.5 && front.x-modelDepth>0.05));
           if((useSurface && !surfacePlaced) || frontClip.w<=0.0
             || any(lessThan(frontUv,vec2(0.0))) || any(greaterThan(frontUv,vec2(1.0)))
