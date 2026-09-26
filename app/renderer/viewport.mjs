@@ -2,6 +2,7 @@ import { createScenePreview } from './scene-preview.mjs';
 import { moveGridPoint } from '../src/mapping/grid.mjs';
 import { fitLandmarkGrid } from '../src/mapping/alignment.mjs';
 import { movedWrapTransform, rotatedWrapTransform } from '../src/mapping/wrap.mjs';
+import { zoomAtCursor } from './alignment-source-view.mjs';
 
 export function createViewport(host, callbacks={}) {
   host.style.position='relative';host.style.overflow='hidden';
@@ -19,6 +20,7 @@ export function createViewport(host, callbacks={}) {
   let snapshot=null,tool=null,mode='placement',showGrid=true,selected=null,drag=null,maskPoints=[],maskExcluded=false,scene=null;
   let alignmentSelection=null, alignmentDrag=null, alignmentPan=null, previewPairs=null, previewGrid=null, surfaceDrag=null, surfacePreview=null, wrapDrag=null, textureOpacity=1, uvWarning=false;
   let physical={active:false,picking:false,pairs:[],selected:null},physicalDrag=null;
+  let projectorView={zoom:1,panX:0,panY:0},projectorPan=null;
   host.tabIndex=0;
   function physicalUV(event){const b=canvas.getBoundingClientRect();return {u:Math.max(0,Math.min(1,(event.clientX-b.left)/b.width)),v:Math.max(0,Math.min(1,(event.clientY-b.top)/b.height))};}
   function rect(){const size=Math.max(100,Math.min(240,host.clientWidth-80,host.clientHeight-150));return {x:host.clientWidth-size-36,y:66,w:size,h:size};}
@@ -31,9 +33,12 @@ export function createViewport(host, callbacks={}) {
       const width=Math.min(w,h*aspect),height=width/aspect;
       Object.assign(canvas.style,{inset:'auto',left:`${(w-width)/2}px`,top:`${(h-height)/2}px`,width:`${width}px`,height:`${height}px`});
     }else Object.assign(canvas.style,{inset:'0',left:'0',top:'0',width:'100%',height:'100%'});
+    canvas.style.transformOrigin='top left';
+    canvas.style.transform=mode==='projector'
+      ?`translate(${projectorView.panX}px, ${projectorView.panY}px) scale(${projectorView.zoom})`:'';
     overlay.width=Math.max(1,w*dpr);overlay.height=Math.max(1,h*dpr);context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,w,h);
     const hasMesh=Boolean(snapshot?.project.mesh);
-    hint.textContent=!hasMesh||mode==='projector'?'':tool==='align'?'Right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Left-drag move image · right-drag rotate image':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'';
+    hint.textContent=!hasMesh?'':mode==='projector'?'Wheel zoom · middle-drag pan':tool==='align'?'Right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Left-drag move image · right-drag rotate image':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'';
     if(mode==='projector'&&physical.active){
       const b=canvas.getBoundingClientRect(),hostBox=host.getBoundingClientRect();
       const at=p=>({x:b.left-hostBox.left+p.u*b.width,y:b.top-hostBox.top+p.v*b.height});
@@ -106,15 +111,28 @@ export function createViewport(host, callbacks={}) {
   }
   function report(error){callbacks.onError?.(error);}
   function endAlignmentPan(){if(!alignmentPan)return;alignmentPan=null;scene?.endPan();}
-  canvas.addEventListener('wheel',(event)=>{
-    if(mode!=='placement'||!snapshot?.project.mesh)return;
+  host.addEventListener('wheel',(event)=>{
+    if(!snapshot?.project.mesh || (mode==='placement'&&event.target!==canvas)
+      || event.target.closest?.('button'))return;
     event.preventDefault();event.stopImmediatePropagation();
     const multiplier=event.deltaMode===1?16:event.deltaMode===2?host.clientHeight:1;
-    scene?.zoomAt(event.clientX,event.clientY,Math.exp(-event.deltaY*multiplier*0.0015));
+    const factor=Math.exp(-event.deltaY*multiplier*0.0015);
+    if(mode==='projector'){
+      const bounds=canvas.getBoundingClientRect();
+      const baseLeft=bounds.left-projectorView.panX,baseTop=bounds.top-projectorView.panY;
+      projectorView=zoomAtCursor(projectorView,projectorView.zoom*factor,
+        event.clientX-baseLeft,event.clientY-baseTop);
+    }else scene?.zoomAt(event.clientX,event.clientY,factor);
     draw();
   },{capture:true,passive:false});
   canvas.addEventListener('contextmenu',(event)=>{if(mode==='placement')event.preventDefault();});
   canvas.addEventListener('pointerdown',(event)=>{
+    if(snapshot&&mode==='projector'&&event.button===1){
+      event.preventDefault();host.focus({preventScroll:true});
+      projectorPan={pointerId:event.pointerId,x:event.clientX,y:event.clientY};
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
     if(snapshot&&mode==='projector'&&physical.active){
       if(event.button!==0)return;
       event.preventDefault();host.focus({preventScroll:true});
@@ -178,6 +196,11 @@ export function createViewport(host, callbacks={}) {
     if(nearest.d>18)return; selected=nearest.index;drag=nearest.index;canvas.setPointerCapture(event.pointerId);callbacks.onSelection?.(selected);draw();
   });
   canvas.addEventListener('pointermove',(event)=>{
+    if(projectorPan?.pointerId===event.pointerId){
+      projectorView={...projectorView,panX:projectorView.panX+event.clientX-projectorPan.x,
+        panY:projectorView.panY+event.clientY-projectorPan.y};
+      projectorPan={pointerId:event.pointerId,x:event.clientX,y:event.clientY};draw();return;
+    }
     if(physicalDrag){physicalDrag.point=physicalUV(event);callbacks.onPhysicalDrag?.(physicalDrag.index,physicalDrag.point,false);return;}
     if(surfaceDrag?.pointerId===event.pointerId){
       const surface=scene?.pickSurface(event.clientX,event.clientY,surfaceDrag.latest);
@@ -212,6 +235,7 @@ export function createViewport(host, callbacks={}) {
     }
   });
   canvas.addEventListener('pointerup',(event)=>{
+    if(projectorPan?.pointerId===event.pointerId){projectorPan=null;canvas.releasePointerCapture(event.pointerId);return;}
     if(physicalDrag){const current=physicalDrag;physicalDrag=null;if(current.point)Promise.resolve(callbacks.onPhysicalDrag?.(current.index,current.point,true)).catch(report);return;}
     if(surfaceDrag?.pointerId===event.pointerId){
       const surface=surfaceDrag.latest;surfaceDrag=null;
@@ -236,8 +260,8 @@ export function createViewport(host, callbacks={}) {
     if(drag===null)return;const index=drag;drag=null;
     Promise.resolve(callbacks.onGridPoint?.(index,uv(event))).catch(report).finally(clearPreview);
   });
-  canvas.addEventListener('pointercancel',()=>{physicalDrag=null;releaseSurfaceDrag();releaseWrapDrag();endAlignmentPan();callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
-  canvas.addEventListener('lostpointercapture',endAlignmentPan);
+  canvas.addEventListener('pointercancel',()=>{projectorPan=null;physicalDrag=null;releaseSurfaceDrag();releaseWrapDrag();endAlignmentPan();callbacks.onPhysicalCancel?.();drag=null;alignmentDrag=null;clearPreview();});
+  canvas.addEventListener('lostpointercapture',()=>{projectorPan=null;endAlignmentPan();});
   canvas.addEventListener('click',(event)=>{
     if(event.button!==0||mode!=='placement'||tool!=='mask'||!snapshot||event.detail>1)return;
     const point=uv(event);if(point.u<0||point.u>1||point.v<0||point.v>1)return;maskPoints.push({u:Math.max(0,Math.min(1,point.u)),v:Math.max(0,Math.min(1,point.v))});draw();
@@ -266,7 +290,7 @@ export function createViewport(host, callbacks={}) {
     },
     setMaskExcluded(value){maskExcluded=Boolean(value);maskPoints=[];draw();},
     setTool(value){endAlignmentPan();releaseSurfaceDrag();releaseWrapDrag();tool=value;maskPoints=[];drag=null;alignmentDrag=null;clearPreview();if(tool==='align'&&snapshot?.project.placement.mappingMode==='front')scene?.fit();updateInput();},
-    setMode(value){endAlignmentPan();releaseSurfaceDrag();releaseWrapDrag();clearPreview();mode=value;scene?.setMode(value);updateInput();},
+    setMode(value){endAlignmentPan();projectorPan=null;releaseSurfaceDrag();releaseWrapDrag();clearPreview();mode=value;scene?.setMode(value);updateInput();},
     setPhysicalCalibration(value){physical=value;scene?.setCalibrationEditing(value.active);updateInput();},
     getPhysicalLandmarks(){
       const pairs=snapshot?.project?.placement?activeMapping(snapshot.project.placement).alignment?.pairs??[]:[];
@@ -291,7 +315,7 @@ export function createViewport(host, callbacks={}) {
       draw();
     },
     clearAlignmentPreview:clearPreview,
-    fit(){endAlignmentPan();scene?.fit();draw();},
+    fit(){endAlignmentPan();projectorPan=null;if(mode==='projector')projectorView={zoom:1,panX:0,panY:0};else scene?.fit();draw();},
     destroy(){observer.disconnect();scene?.destroy();host.replaceChildren();},
   };
 }

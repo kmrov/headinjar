@@ -233,7 +233,8 @@ function setMode(mode) {
   ui.canvasTitle.textContent = projector ? 'Projector preview' : 'Model preview';
   ui.canvasBadge.textContent = projector ? 'Calibration' : 'Placement';
   ui.viewport.setAttribute('aria-label', projector ? 'Projector calibration preview' : '3D model and image placement preview');
-  $('.viewport-controls').hidden = projector;
+  $('.viewport-controls').hidden = false;
+  $('#fit-view').setAttribute('aria-label',projector?'Fit projector preview to view':'Fit model to view');
   $('.status-meta').hidden = projector;
   $$('.tool-switch').forEach((toolbar) => { toolbar.hidden = projector; });
   if (viewportApi) {viewportApi.setMode(activeMode);viewportApi.setTextureOpacity(!projector&&activeTool==='align'?Number($('#texture-opacity').value):1);}
