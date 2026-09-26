@@ -70,11 +70,11 @@ For precise landmark placement in **Front → Align**, zoom the source image and
 
 | Mode | Use it for |
 | --- | --- |
-| **Front** | A front-facing image fitted with transforms, a control grid, masks, and landmarks. Hidden and rear-facing surfaces do not receive the image. |
+| **Front** | A front-facing image fitted with transforms, a control grid, masks, and landmarks. The image extends around the main connected surface, including its sides and underside. |
 | **Surface** | One image or live video placed by clicking or dragging any visible model side. Use Move to orbit, then Place image to position it; scale and rotation are in the Surface inspector. |
 | **Model UV** | A texture atlas authored for the OBJ's original UV coordinates. Front placement controls do not apply in this mode. |
 
-Front uses the OBJ's original +Z side; the editor camera starts there, and orbiting it does not change the mapping direction. Surface follows the selected local face and clips at sharp corners. It places a single planar image, not a whole-model texture atlas. A front photo cannot show the sides or back of an object. And if an OBJ has UV coordinates, a random photo still will not match its texture atlas.
+Front starts on the OBJ's original +Z side; the editor camera starts there, and orbiting it does not change the mapping direction. The same image coordinates stretch across connected sides and undersides, so those areas show an approximation of the front image rather than their real appearance. Separate inner mesh layers remain occluded. Surface follows the selected local face and clips at sharp corners. It places a single planar image, not a whole-model texture atlas. If an OBJ has UV coordinates, a random photo still will not match its texture atlas.
 
 ### Physical landmark alignment
 

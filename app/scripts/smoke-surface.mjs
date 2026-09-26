@@ -153,7 +153,8 @@ try {
     'v -0.2 -1 1','v 0.2 -1 1','v 0.2 1 1','v -0.2 1 1',
     'v -0.01 -0.99 -1','v 0.01 -0.99 -1','v 0 -0.97 -1',
     'f 1 2 3 4','f 5 6 7',
-    ...(rear ? ['v -0.2 -1 0.998','v 0.2 -1 0.998','v 0.2 1 0.998','v -0.2 1 0.998','f 8 9 10 11'] : []),
+    ...(rear ? ['v -0.2 -1 0.998',`v 0.2 -1 ${rear==='slanted'?0.75:0.998}`,
+      `v 0.2 1 ${rear==='slanted'?0.75:0.998}`,'v -0.2 1 0.998','f 8 9 10 11'] : []),
   ].join('\n') + '\n';
   await writeFile(meshPath, closeLayerMesh(false));
   await editor.locator('#import-mesh').click();
@@ -184,7 +185,7 @@ try {
   await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const closeLayersShot=join(screenshots,'surface-depth-close-layers.png');
   await edgeOutput.screenshot({path:closeLayersShot});
-  const comparison=await application.evaluate(({nativeImage},paths)=>{
+  const compareLayers=paths=>application.evaluate(({nativeImage},paths)=>{
     const before=nativeImage.createFromPath(paths.before).toBitmap();
     const after=nativeImage.createFromPath(paths.after).toBitmap();
     let newBright=0;
@@ -196,10 +197,36 @@ try {
     const a=nativeImage.createFromPath(paths.before),b=nativeImage.createFromPath(paths.after);
     const center=(Math.floor(a.getSize().height/2)*a.getSize().width+Math.floor(a.getSize().width/2))*4;
     return {newBright,beforeCenter:[...before.subarray(center,center+4)],afterCenter:[...after.subarray(center,center+4)]};
-  },{before:frontOnlyShot,after:closeLayersShot});
+  },paths);
+  const comparison=await compareLayers({before:frontOnlyShot,after:closeLayersShot});
   assert.ok(comparison.beforeCenter.slice(0,3).every(channel=>channel>180),'the exposed front surface receives the image');
   assert.ok(comparison.afterCenter.slice(0,3).every(channel=>channel>180),'adding an inner layer keeps the front image');
   assert.ok(comparison.newBright<10,`occluded rear layer must not receive the image: ${JSON.stringify(comparison)}`);
+
+  // A slanted inner layer is still behind the front face, even where its
+  // normal points toward the side. Stretching must not paint that layer.
+  await writeFile(meshPath,closeLayerMesh(false));
+  await editor.locator('#import-mesh').click();
+  await invoke('editProject',{type:'mapping-mode',value:'front'});
+  await invoke('editProject',{type:'projector',value:edgeProjector});
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const frontModeOnlyShot=join(screenshots,'surface-depth-front-mode-only.png');
+  await edgeOutput.screenshot({path:frontModeOnlyShot});
+  await writeFile(meshPath,closeLayerMesh('slanted'));
+  await editor.locator('#import-mesh').click();
+  await invoke('editProject',{type:'mapping-mode',value:'front'});
+  await invoke('editProject',{type:'projector',value:edgeProjector});
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const slantedLayersShot=join(screenshots,'surface-depth-slanted-layer.png');
+  await edgeOutput.screenshot({path:slantedLayersShot});
+  const slantedComparison=await compareLayers({before:frontModeOnlyShot,after:slantedLayersShot});
+  assert.ok(slantedComparison.newBright<10,`occluded slanted layer must not receive the image: ${JSON.stringify(slantedComparison)}`);
 
   // A curved mesh changes depth within one capture texel. Its exposed surface
   // should remain fully textured instead of alternating between white and black.
@@ -291,10 +318,32 @@ try {
   await edgeOutput.screenshot({path:opposedNormalShot});
   const opposedNormalPixel=await pixelAt(opposedNormalShot,overhangSize.width/2,overhangSize.height/2);
   assert.ok(opposedNormalPixel.every(channel=>channel>180),`a visible face with an opposed vertex normal receives the image: ${opposedNormalPixel}`);
+
+  // The source camera cannot see this underside behind the front plate, but
+  // a projector looking up at it can. Front mapping should extend the same
+  // image onto that exposed surface without opening the close-layer leak.
+  await writeFile(meshPath, [
+    'v -0.5 -0.6 0.5','v 0.5 -0.6 0.5','v 0.5 0.6 0.5','v -0.5 0.6 0.5',
+    'v -0.5 -0.5 -0.2','v 0.5 -0.5 -0.2','v 0.5 -0.5 0.2','v -0.5 -0.5 0.2',
+    'f 1 2 3 4','f 5 6 7 8','f 1 5 8',
+  ].join('\n')+'\n');
+  await editor.locator('#import-mesh').click();
+  await invoke('editProject',{type:'mapping-mode',value:'front'});
+  const lowerProjector=structuredClone((await invoke('getSnapshot')).project.projector);
+  lowerProjector.position=[0,-2,2];lowerProjector.rotation=[27,0,0];
+  await invoke('editProject',{type:'projector',value:lowerProjector});
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const undersideShot=join(screenshots,'surface-visible-underside.png');
+  await edgeOutput.screenshot({path:undersideShot});
+  const undersidePixel=await pixelAt(undersideShot,overhangSize.width/2,overhangSize.height/2);
+  assert.ok(undersidePixel.every(channel=>channel>180),`visible underside receives the extended Front image: ${undersidePixel}`);
   await invoke('outputAction',{type:'stop'});
   await edgeOutput.close();
   assert.deepEqual(errors, []);
-  console.log(`PASS: Surface placement and persistence; curved Front ${Math.round(curveCoverage*1000)/10}%, curved Surface ${Math.round(surfaceCurveCoverage*1000)/10}%, 2 mm hidden-layer bright pixels ${comparison.newBright}.`);
+  console.log(`PASS: Surface placement and persistence; curved Front ${Math.round(curveCoverage*1000)/10}%, curved Surface ${Math.round(surfaceCurveCoverage*1000)/10}%, hidden-layer bright pixels ${comparison.newBright} parallel / ${slantedComparison.newBright} slanted; underside receives the image.`);
 } finally {
   await application?.close();
   await rm(temporary, { recursive: true, force: true });

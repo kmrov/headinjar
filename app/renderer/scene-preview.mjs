@@ -40,12 +40,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   };
   const material = new THREE.ShaderMaterial({
     defines: projection ? { PROJECTION_OUTPUT: 1 } : {},
-    uniforms, side:THREE.FrontSide,
-    vertexShader:`varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform vec2 boundsMin; uniform vec2 boundsSize;
-      void main(){modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);localPosition=position;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);
+    uniforms, side:THREE.FrontSide, extensions:{derivatives:true},
+    vertexShader:`attribute float wrapSurface; varying float frontWrapSurface; varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform vec2 boundsMin; uniform vec2 boundsSize;
+      void main(){frontWrapSurface=wrapSurface;modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);localPosition=position;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`precision highp float;
-      varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
+      varying float frontWrapSurface; varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
       uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
       uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange; uniform mat4 frontViewProjection;
       // The depth texture is packed into two channels, so decode each texel
@@ -92,9 +92,18 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           vec4 frontClip=frontViewProjection*vec4(localPosition,1.0);
           vec2 frontUv=frontClip.xy/frontClip.w*0.5+0.5;
           vec2 front=sampledFrontDepth(frontUv);
+          bool frontOccluded=front.y<0.5 || modelDepth<front.x-FRONT_DEPTH_EPSILON;
+          // Continue the image across a side or underside hidden from the
+          // front capture. Small nearly parallel layers stay occluded; a
+          // surface far behind the front can use the same image coordinates.
+          // Use the triangle normal because imported smooth normals on scans
+          // can disagree with the visible triangle.
+          vec3 faceNormal=normalize(cross(dFdx(localPosition),dFdy(localPosition)));
+          bool extendFront=!useSurface && frontWrapSurface>0.5
+            && (dot(faceNormal,planeNormal)<0.9 || (front.y>=0.5 && front.x-modelDepth>0.05));
           if((useSurface && !surfacePlaced) || frontClip.w<=0.0
             || any(lessThan(frontUv,vec2(0.0))) || any(greaterThan(frontUv,vec2(1.0)))
-            || front.y<0.5 || modelDepth<front.x-FRONT_DEPTH_EPSILON){
+            || (frontOccluded && !extendFront)){
             gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light,1.0);
             #ifdef PROJECTION_OUTPUT
               gl_FragColor=vec4(0.,0.,0.,1.);
@@ -190,6 +199,49 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     pivot.remove(model); model = null; modelBounds=null; hasModelUV=false;
     frontDepthTarget?.dispose();frontDepthTarget=null;depthKey=null;uniforms.frontDepth.value=null;
   }
+  function markFrontWrapSurface(object) {
+    // OBJ triangles are duplicated at UV seams. Join faces by their original
+    // positions, then extend Front only on the largest connected component.
+    const positionIds=new Map(), parent=[], meshes=[];
+    const find=id=>{while(parent[id]!==id){parent[id]=parent[parent[id]];id=parent[id];}return id;};
+    const join=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[b]=a;};
+    object.traverse(child=>{
+      if(!child.isMesh)return;
+      const position=child.geometry.getAttribute('position');
+      const ids=new Int32Array(position.count);
+      for(let index=0;index<position.count;index++){
+        const key=`${position.getX(index)},${position.getY(index)},${position.getZ(index)}`;
+        if(!positionIds.has(key)){positionIds.set(key,parent.length);parent.push(parent.length);}
+        ids[index]=positionIds.get(key);
+      }
+      const triangles=child.geometry.index?.array??Array.from({length:position.count},(_,index)=>index);
+      for(let index=0;index+2<triangles.length;index+=3){
+        join(ids[triangles[index]],ids[triangles[index+1]]);
+        join(ids[triangles[index]],ids[triangles[index+2]]);
+      }
+      meshes.push({geometry:child.geometry,position,ids,triangles});
+    });
+    const components=new Map();
+    for(const {position,ids,triangles} of meshes){
+      for(let index=0;index+2<triangles.length;index+=3){
+        const root=find(ids[triangles[index]]);
+        const component=components.get(root)??{faces:0,maxZ:-Infinity};
+        component.faces++;
+        for(let corner=0;corner<3;corner++)component.maxZ=Math.max(component.maxZ,position.getZ(triangles[index+corner]));
+        components.set(root,component);
+      }
+    }
+    let primary=null;
+    for(const [root,component] of components){
+      const selected=components.get(primary);
+      if(!selected || component.faces>selected.faces || (component.faces===selected.faces && component.maxZ>selected.maxZ))primary=root;
+    }
+    for(const {geometry,position,ids} of meshes){
+      const values=new Float32Array(position.count);
+      for(let index=0;index<values.length;index++)values[index]=find(ids[index])===primary?1:0;
+      geometry.setAttribute('wrapSurface',new THREE.BufferAttribute(values,1));
+    }
+  }
   function loadModel(mesh) {
     if(mesh?.obj === meshKey) return;
     releaseModel(); meshKey = mesh?.obj ?? null;
@@ -211,6 +263,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
       next.traverse(child=>{if(child.isMesh)child.geometry.dispose();});
       throw new RangeError('The OBJ has no usable surface geometry.');
     }
+    markFrontWrapSurface(next);
     modelBounds=box.clone();
     uniforms.uvAvailable.value=hasModelUV;
     uniforms.boundsMin.value.set(box.min.x,box.min.y);

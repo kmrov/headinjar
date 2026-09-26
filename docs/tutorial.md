@@ -29,7 +29,7 @@ Keep the reference image at its current path while you work. The project stores 
 
 ## 2. Fit the image, then align landmarks
 
-In the toolbar, keep **Image placement** selected and set **Mapping** to **Front**. Front uses the OBJ's +Z side, which is the initial camera view. Dragging with **Move** orbits the view; it does not move the image. Use **Image position** for a rough fit, then scale and rotate it there. **Model UV** is for an image atlas prepared for that OBJ's UV layout.
+In the toolbar, keep **Image placement** selected and set **Mapping** to **Front**. Front starts on the OBJ's +Z side, which is the initial camera view, and stretches the image around its connected sides and underside. Dragging with **Move** orbits the view; it does not move the image. Use **Image position** for a rough fit, then scale and rotate it there. **Model UV** is for an image atlas prepared for that OBJ's UV layout.
 
 To put one image or live video on another side, choose **Surface**. Orbit the model with **Move**, choose **Place image**, then click or drag on the visible surface. The center handle shows the saved location; the Surface inspector adjusts scale and rotation. Switching back to Front preserves its own alignment settings. A new OBJ clears the Surface location because its coordinates refer to the old model.
 
