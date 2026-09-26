@@ -41,11 +41,11 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const material = new THREE.ShaderMaterial({
     defines: projection ? { PROJECTION_OUTPUT: 1 } : {},
     uniforms, side:THREE.FrontSide,
-    vertexShader:`varying vec3 surfaceNormal; varying vec3 localPosition; varying vec3 localNormal; varying vec2 modelUV; varying vec2 domain; uniform vec2 boundsMin; uniform vec2 boundsSize;
-      void main(){modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);localPosition=position;localNormal=normal;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);
+    vertexShader:`varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform vec2 boundsMin; uniform vec2 boundsSize;
+      void main(){modelUV=uv;surfaceNormal=normalize(normalMatrix*normal);localPosition=position;domain=vec2((position.x-boundsMin.x)/boundsSize.x,1.0-(position.y-boundsMin.y)/boundsSize.y);
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`precision highp float;
-      varying vec3 surfaceNormal; varying vec3 localPosition; varying vec3 localNormal; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
+      varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
       uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
       uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange; uniform mat4 frontViewProjection;
       // The depth texture is packed into two channels, so decode each texel
@@ -88,12 +88,11 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           projectedDomain=vec2(0.5+dot(relative,planeRight)/planeSize.x,0.5-dot(relative,planeUp)/planeSize.y);
         }
         if(hasImage && !useModelUV){
-          float facing=useSurface?dot(normalize(localNormal),planeNormal):localNormal.z;
           float modelDepth=(dot(localPosition-planeOrigin,planeNormal)-depthMin)/depthRange;
           vec4 frontClip=frontViewProjection*vec4(localPosition,1.0);
           vec2 frontUv=frontClip.xy/frontClip.w*0.5+0.5;
           vec2 front=sampledFrontDepth(frontUv);
-          if((useSurface && !surfacePlaced) || facing<=0.0 || frontClip.w<=0.0
+          if((useSurface && !surfacePlaced) || frontClip.w<=0.0
             || any(lessThan(frontUv,vec2(0.0))) || any(greaterThan(frontUv,vec2(1.0)))
             || front.y<0.5 || modelDepth<front.x-FRONT_DEPTH_EPSILON){
             gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light,1.0);
@@ -131,13 +130,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   const frontCaptureMaterial = new THREE.ShaderMaterial({
     uniforms:{planeOrigin:uniforms.planeOrigin,planeNormal:uniforms.planeNormal,depthMin:uniforms.depthMin,depthRange:uniforms.depthRange},
     vertexShader:`uniform vec3 planeOrigin; uniform vec3 planeNormal; uniform float depthMin; uniform float depthRange;
-      varying float depthValue; varying float normalFacing;
+      varying float depthValue;
       void main(){vec3 relative=position-planeOrigin;
-        depthValue=(dot(relative,planeNormal)-depthMin)/depthRange;normalFacing=dot(normal,planeNormal);
+        depthValue=(dot(relative,planeNormal)-depthMin)/depthRange;
         gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-    fragmentShader:`precision highp float; varying float depthValue; varying float normalFacing;
+    fragmentShader:`precision highp float; varying float depthValue;
       void main(){
-        if(normalFacing<=0.0)discard;
         float packed=floor(clamp(depthValue,0.0,1.0)*65535.0+0.5);
         float high=floor(packed/256.0);
         gl_FragColor=vec4(high/255.0,(packed-high*256.0)/255.0,0.0,1.0);

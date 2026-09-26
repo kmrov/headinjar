@@ -197,6 +197,7 @@ try {
   const displayChoice = editor.locator('.display-choice').first();
   assert.match(await displayChoice.innerText(), new RegExp(`${displays[0].physicalSize.width}\\s*×\\s*${displays[0].physicalSize.height}`));
   await displayChoice.click();
+  const outputOpened = application.waitForEvent('window');
   await editor.locator('#confirm-display').click();
   await editor.waitForFunction(async ({ id, width, height }) => {
     const state = await window.desktop.getSnapshot();
@@ -205,7 +206,7 @@ try {
   const selectedOutput = (await invoke('getSnapshot')).project.output;
   assert.deepEqual({ width: selectedOutput.width, height: selectedOutput.height }, displays[0].physicalSize,
     'output render size matches selected screen pixels');
-  const output = application.windows().find((page) => page !== editor);
+  const output = await outputOpened;
   assert.ok(output, 'dedicated output window');
   await output.waitForLoadState();
   await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).output.rendererReady);

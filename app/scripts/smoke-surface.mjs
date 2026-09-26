@@ -273,6 +273,24 @@ try {
   await edgeOutput.screenshot({path:recessedSurfaceShot});
   const recessedSurfacePixel=await pixelAt(recessedSurfaceShot,overhangSize.width/2,overhangSize.height*0.29);
   assert.ok(recessedSurfacePixel.every(channel=>channel>180),`visible recessed Surface placement below an overhang receives the image: ${recessedSurfacePixel}`);
+
+  // A scanned mesh can have a visible front face with a vertex normal pointing
+  // away from +Z. Visibility comes from the capture depth, not that normal.
+  await writeFile(meshPath, [
+    'v -0.5 -0.5 0','v 0.5 -0.5 0','v 0.5 0.5 0','v -0.5 0.5 0',
+    'v -0.01 -0.01 -1','v 0.01 -0.01 -1','v 0 0.01 -1',
+    'vn 0 0 -1','f 1//1 2//1 3//1 4//1','f 5 6 7',
+  ].join('\n')+'\n');
+  await editor.locator('#import-mesh').click();
+  await invoke('editProject',{type:'mapping-mode',value:'front'});
+  await invoke('outputAction',{type:'resume'});
+  await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).mode==='live');
+  await edgeOutput.waitForFunction(()=>!document.querySelector('#projection').hidden);
+  await edgeOutput.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const opposedNormalShot=join(screenshots,'surface-visible-opposed-normal.png');
+  await edgeOutput.screenshot({path:opposedNormalShot});
+  const opposedNormalPixel=await pixelAt(opposedNormalShot,overhangSize.width/2,overhangSize.height/2);
+  assert.ok(opposedNormalPixel.every(channel=>channel>180),`a visible face with an opposed vertex normal receives the image: ${opposedNormalPixel}`);
   await invoke('outputAction',{type:'stop'});
   await edgeOutput.close();
   assert.deepEqual(errors, []);
