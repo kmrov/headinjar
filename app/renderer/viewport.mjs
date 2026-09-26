@@ -11,11 +11,9 @@ export function createViewport(host, callbacks={}) {
   Object.assign(canvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',display:'none'});
   const overlay=document.createElement('canvas');
   Object.assign(overlay.style,{position:'absolute',inset:'0',width:'100%',height:'100%',touchAction:'none',pointerEvents:'none'});
-  const label=document.createElement('span');
-  Object.assign(label.style,{position:'absolute',bottom:'68px',left:'24px',fontSize:'11px',letterSpacing:'.08em',textTransform:'uppercase',color:'#a8b2af',pointerEvents:'none'});
   const hint=document.createElement('span');
   Object.assign(hint.style,{position:'absolute',bottom:'68px',right:'24px',fontSize:'11px',color:'#88948e',pointerEvents:'none'});
-  host.append(empty,canvas,overlay,label,hint);
+  host.append(empty,canvas,overlay,hint);
   const context=overlay.getContext('2d');
   const activeMapping=placement=>placement.mappingMode==='wrap'?placement.wrap:placement;
   let snapshot=null,tool=null,mode='placement',showGrid=true,selected=null,drag=null,maskPoints=[],maskExcluded=false,scene=null;
@@ -35,12 +33,8 @@ export function createViewport(host, callbacks={}) {
     }else Object.assign(canvas.style,{inset:'0',left:'0',top:'0',width:'100%',height:'100%'});
     overlay.width=Math.max(1,w*dpr);overlay.height=Math.max(1,h*dpr);context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,w,h);
     const hasMesh=Boolean(snapshot?.project.mesh);
-    label.textContent=hasMesh?'OBJ preview · normalized fit':'No model loaded';
-    label.style.display=tool==='align'?'none':'';
-    hint.textContent=!hasMesh?'':mode==='projector'?'Projection preview':tool==='align'?'Pick image points · right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Drag image across head · right-drag orbit':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'Drag to orbit · scroll to zoom';
+    hint.textContent=!hasMesh||mode==='projector'?'':tool==='align'?'Right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Drag image across head · right-drag orbit':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'';
     if(mode==='projector'&&physical.active){
-      label.textContent='Projector preview';
-      hint.textContent=physical.picking?'Click a point on the model':'Drag points to match the real surface';
       const b=canvas.getBoundingClientRect(),hostBox=host.getBoundingClientRect();
       const at=p=>({x:b.left-hostBox.left+p.u*b.width,y:b.top-hostBox.top+p.v*b.height});
       physical.pairs.forEach((pair,index)=>{

@@ -12,29 +12,30 @@ import { createEditorWebRTCSource } from './editor-webrtc-source.mjs';
 import { createWebRTCReceiver } from './webrtc-receiver.mjs';
 import { createFramePublisher } from './media-frame-channel.mjs';
 import { createWorkspaceLayout } from './workspace-layout.mjs';
+import { createContextHelp } from './context-help.mjs';
 
 const desktop = window.desktop;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+createContextHelp();
 const ui = {
   name: $('#project-name'), saveState: $('#save-state'), feedback: $('#feedback'), error: $('#error-region'),
-  modelName: $('#model-name'), modelState: $('#model-state'), modelAction: $('#model-action-label'),
-  referenceName: $('#reference-name'), referenceState: $('#reference-state'), referenceThumb: $('#reference-thumb'),
+  modelRow: $('#model-asset-row'), modelName: $('#model-name'), modelAction: $('#model-action-label'),
+  referenceRow: $('#reference-asset-row'), referencePreview: $('.reference-preview'), referenceName: $('#reference-name'), referenceState: $('#reference-state'), referenceThumb: $('#reference-thumb'),
   referenceEmpty: $('#reference-empty'), referenceEmptyLabel: $('#reference-empty-label'), referenceAction: $('#reference-action-label'), referenceWarning: $('#reference-warning'),
-  sourceStatus: $('#source-status'), sourceDetail: $('#source-detail'), sourceHealth: $('#source-health'),
   footerDot: $('#footer-health-dot'), footerSource: $('#footer-source-label'), footerSourceDetail: $('#footer-source-detail'),
   outputStatus: $('#output-status'), outputDetail: $('#output-detail'), outputSwatch: $('#output-swatch'),
   resolution: $('#resolution-status'), canvasTitle: $('#canvas-title'), canvasBadge: $('#canvas-badge'),
   placementPanel: $('#placement-panel'), surfacePanel: $('#surface-panel'), maskPanel: $('#mask-panel'), projectorPanel: $('#projector-panel'),
-  alignmentPanel: $('#alignment-panel'), alignmentSource: $('#alignment-source-panel'), mappingMode: $('#mapping-mode'), alignmentModeNote: $('#alignment-mode-note'),
+  alignmentPanel: $('#alignment-panel'), alignmentSource: $('#alignment-source-panel'), mappingMode: $('#mapping-mode'),
   placementX: $('#placement-x'), placementY: $('#placement-y'), placementScale: $('#placement-scale'), placementRotation: $('#placement-rotation'),
-  surfaceScale: $('#surface-scale'), surfaceRotation: $('#surface-rotation'), surfaceStatus: $('#surface-status'), resetSurface: $('#reset-surface'),
-  maskCount: $('#mask-count'), maskNote: $('#mask-note'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
+  surfaceScale: $('#surface-scale'), surfaceRotation: $('#surface-rotation'), resetSurface: $('#reset-surface'),
+  maskCount: $('#mask-count'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
   hold: $('#hold-output'), projectionToggle: $('#projection-toggle'), changeDisplay: $('#change-display'),
   displayDialog: $('#display-dialog'), displayList: $('#display-list'), displayResolutionNote: $('#display-resolution-note'), confirmDisplay: $('#confirm-display'),
   viewport: $('#viewport'),
-  webrtcPreviewCanvas: $('#webrtc-preview-canvas'), webrtcPreviewEmpty: $('#webrtc-preview-empty'),
-  webrtcPreviewFreeze: $('#webrtc-preview-freeze'), webrtcPreviewStatus: $('#webrtc-preview-status'),
+  webrtcPreviewCanvas: $('#webrtc-preview-canvas'),
+  webrtcPreviewFreeze: $('#webrtc-preview-freeze'),
   webrtcVideo: $('#webrtc-video'),
 };
 
@@ -184,6 +185,7 @@ function statusLabel(source) {
     return { label, detail: message, state };
   }
   if (source.kind === 'reference') {
+    if (!snapshot?.project?.reference) return { label: 'No source', detail: '', state: 'off' };
     return source.connected
       ? { label: 'Reference image ready', detail: detail || 'Static reference source', state: 'live' }
       : { label: 'Reference image unavailable', detail: detail || 'Import a reference image and model', state: 'off' };
@@ -227,8 +229,7 @@ function setMode(mode) {
   ui.alignmentPanel.hidden = projector || activeTool !== 'align';
   ui.placementPanel.hidden = projector || activeTool === 'align';
   ui.maskPanel.hidden = projector || activeTool === 'align';
-  $('#mapping-mode').closest('.mapping-mode-control').hidden = projector;
-  $('#mapping-uv-note').hidden=projector||snapshot?.project?.placement?.mappingMode!=='uv';
+  $('#mapping-mode').closest('.mapping-mode-group').hidden = projector;
   ui.canvasTitle.textContent = projector ? 'Projector preview' : 'Model preview';
   ui.canvasBadge.textContent = projector ? 'Calibration' : 'Placement';
   ui.viewport.setAttribute('aria-label', projector ? 'Projector calibration preview' : '3D model and image placement preview');
@@ -258,21 +259,11 @@ function setTool(tool) {
   if (viewportApi) {viewportApi.setTool(activeTool);viewportApi.setTextureOpacity(activeTool==='align'?Number($('#texture-opacity').value):1);}
   ui.alignmentSource.hidden = activeMode !== 'placement' || activeTool !== 'align';
   ui.alignmentPanel.hidden = activeMode !== 'placement' || activeTool !== 'align';
-  $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
+  $('#mapping-mode').closest('.mapping-mode-group').hidden = activeMode !== 'placement';
   ui.placementPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.maskPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.surfacePanel.hidden = activeMode === 'projector' || mappingMode !== 'surface';
-  if (activeTool === 'align') {
-    if (mappingMode === 'front') viewportApi?.fit();
-    if (snapshot?.project?.placement?.mappingMode === 'uv') showFeedback('Switch to Front or Wrap mapping to place landmarks.');
-    else showFeedback('Click a point on the image, then the matching point on the model.');
-  }
-  else if (activeTool === 'place') showFeedback(mappingMode === 'wrap'
-    ? 'Drag the image across the head. Right-drag to orbit.'
-    : 'Click or drag on a visible model surface to place the image. Right-drag to orbit.');
-  else if (activeTool === 'mask') showFeedback(maskMode === 'exclude'
-    ? 'Click around the surface to draw an excluded area, then double-click to finish.'
-    : 'Click around the surface to draw the visible area, then double-click to finish.');
+  if (activeTool === 'align' && mappingMode === 'front') viewportApi?.fit();
   renderAlignment();
 }
 
@@ -292,18 +283,19 @@ function renderProject(project) {
   $('#redo-project').disabled = !snapshot?.canRedo;
 
   const mesh = project.mesh;
-  ui.modelName.textContent = mesh?.name || 'No model loaded';
+  ui.modelRow.hidden = !mesh;
+  ui.modelName.textContent = mesh?.name || '';
   ui.modelName.title = mesh?.name || '';
-  ui.modelState.textContent = mesh ? 'Loaded' : 'Required';
-  ui.modelState.classList.toggle('is-ready', Boolean(mesh));
   ui.modelAction.textContent = mesh ? 'Replace OBJ' : 'Import OBJ';
 
   const reference = project.reference;
+  ui.referenceRow.hidden = !reference;
+  ui.referencePreview.hidden = !reference;
   ui.referenceName.textContent = reference?.path?.split(/[\\/]/).at(-1) || 'Reference image';
   const referenceStatus = reference ? (snapshot?.referenceStatus || 'ready') : 'none';
   const referenceLabels = { ready: 'Ready', loading: 'Loading', missing: 'Missing', error: 'Error', none: 'None' };
   ui.referenceState.textContent = referenceLabels[referenceStatus] || 'Unknown';
-  ui.referenceState.classList.toggle('is-ready', referenceStatus === 'ready');
+  ui.referenceState.hidden = ['ready', 'none'].includes(referenceStatus);
   ui.referenceState.classList.toggle('is-error', ['missing', 'error'].includes(referenceStatus));
   ui.referenceAction.textContent = reference ? 'Replace image' : 'Add reference image';
   ui.referenceWarning.hidden = !reference || !['missing', 'error'].includes(referenceStatus);
@@ -334,22 +326,18 @@ function renderProject(project) {
   ui.placementRotation.value = formatNumber(transform.rotation, 1);
   const mask = project.placement.mask || [];
   ui.maskCount.textContent = String(mask.length);
-  ui.maskNote.textContent = mask.length ? `${mask.length} mask ${mask.length === 1 ? 'region' : 'regions'} defined on the surface.` : maskMode === 'exclude' ? 'Use the Mask tool to draw areas to exclude from projection.' : 'Use the Mask tool to draw the area to keep visible on the surface.';
   ui.clearMask.disabled = mask.length === 0;
 
   $('#resolution-status').textContent = `${project.output.width} × ${project.output.height}`;
-  ui.sourceHealth.classList.toggle('is-ready', Boolean(snapshot?.source?.connected));
   if (viewportApi) viewportApi.setSnapshot(snapshot);
   renderAlignment(project);
 }
 
 function renderOutput(state, source) {
   const { label, detail, state: health } = statusLabel(source);
-  ui.sourceStatus.textContent = label;
-  ui.sourceDetail.textContent = detail;
-  ui.sourceHealth.dataset.state = health;
   ui.footerSource.textContent = label;
   ui.footerSourceDetail.textContent = detail;
+  ui.footerSourceDetail.hidden = !detail;
   ui.footerDot.dataset.state = health;
   const output = state || {};
   const mode = snapshot?.mode || (output.blackout || !output.armed ? 'black' : output.hold ? 'held' : 'live');
@@ -434,20 +422,11 @@ function renderAlignment(project = snapshot?.project) {
   ui.mappingMode.value = mappingMode;
   ui.mappingMode.querySelector('option[value="surface"]').disabled=!hasMesh;
   ui.mappingMode.querySelector('option[value="wrap"]').disabled=!hasMesh;
-  $('#mapping-front-note').hidden=mappingMode!=='front'||activeMode!=='placement';
-  $('#mapping-wrap-note').hidden=mappingMode!=='wrap'||activeMode!=='placement';
-  $('#mapping-uv-note').hidden=mappingMode!=='uv'||activeMode!=='placement';
-  $('#mapping-surface-note').hidden=mappingMode!=='surface'||activeMode!=='placement';
   const front = mappingMode === 'front';
   const wrap = mappingMode === 'wrap';
   const alignable = front || wrap;
   const uv = mappingMode === 'uv';
-  $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
-  ui.alignmentModeNote.textContent = uv
-    ? 'Model UV maps the full texture atlas. Align, Mask, and image transform controls apply to Front mapping only.'
-    : mappingMode === 'surface' ? 'Surface placement uses one movable image. Choose Place image to position it.'
-    : wrap ? 'Drag the image across the head with Place image, then pair points on the image and model.'
-    : 'Pair matching points on the image and model. Use at least three landmarks.';
+  $('#mapping-mode').closest('.mapping-mode-group').hidden = activeMode !== 'placement';
   $('[data-tool="mask"]').disabled = !front;
   $('[data-tool="mask"]').title = front ? '' : 'Available in Front mapping';
   $('[data-tool="align"]').disabled = !alignable;
@@ -461,7 +440,6 @@ function renderAlignment(project = snapshot?.project) {
   ui.surfacePanel.hidden = activeMode !== 'placement' || mappingMode !== 'surface';
   ui.maskPanel.hidden = activeMode !== 'placement' || !front || activeTool === 'align';
   const surface=placement.surface??null;
-  ui.surfaceStatus.textContent=!hasMesh?'Import an OBJ to place the image on its surface.':surface?'Drag on the model to move this image. Right-drag to orbit.':'Click the model to place the image. Right-drag to orbit.';
   ui.surfaceScale.value=formatNumber((surface?.scale??1)*100,1);
   ui.surfaceRotation.value=formatNumber(surface?.rotation??0,1);
   [ui.surfaceScale,ui.surfaceRotation,ui.resetSurface].forEach(control=>{control.disabled=!surface;});
@@ -676,9 +654,6 @@ function bindEvents() {
   ui.maskMode.addEventListener('change', (event) => {
     maskMode = event.currentTarget.value === 'exclude' ? 'exclude' : 'keep';
     viewportApi?.setMaskExcluded(maskMode === 'exclude');
-    ui.maskNote.textContent = snapshot?.project?.placement?.mask?.length
-      ? `${snapshot.project.placement.mask.length} mask ${snapshot.project.placement.mask.length === 1 ? 'region' : 'regions'} defined on the surface.`
-      : maskMode === 'exclude' ? 'Use the Mask tool to draw areas to exclude from projection.' : 'Use the Mask tool to draw the area to keep visible on the surface.';
   });
   $('#wireframe').addEventListener('click', (event) => {
     wireframe = !wireframe;
@@ -811,13 +786,11 @@ safely(async () => {
         }
         ui.webrtcPreviewCanvas.getContext('2d')?.drawImage(canvas, 0, 0);
         ui.webrtcPreviewCanvas.hidden = false;
-        ui.webrtcPreviewEmpty.hidden = true;
         viewportApi?.setVideoFrame(canvas);
         alignmentPanel.setLiveFrame(canvas, metadata);
       },
       onClearPreview: () => {
         ui.webrtcPreviewCanvas.hidden = true;
-        ui.webrtcPreviewEmpty.hidden = false;
         viewportApi?.clearVideoSource();
         alignmentPanel.setLiveFrame(null);
         pendingAlignmentSource = null;
@@ -841,8 +814,5 @@ function renderWebRTCPreviewState(state = editorWebRTCSource?.getState()) {
   ui.webrtcPreviewFreeze.disabled = !state.canFreeze;
   ui.webrtcPreviewFreeze.setAttribute('aria-pressed', String(state.frozen));
   ui.webrtcPreviewFreeze.textContent = state.frozen ? 'Follow live preview' : 'Freeze preview';
-  ui.webrtcPreviewStatus.textContent = state.frozen ? 'Preview frozen · stream continues'
-    : state.status === 'running' && state.hasFrame ? 'Live preview'
-      : state.status === 'error' ? 'Preview error' : snapshot?.source?.kind === 'webrtc' ? 'Waiting for live video' : 'No live video';
   webrtcPanel?.render(snapshot);
 }

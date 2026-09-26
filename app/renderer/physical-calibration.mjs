@@ -6,8 +6,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
   root.id = 'physical-calibration';
   root.className = 'physical-calibration';
   root.innerHTML = `
-    <div class="inspector-title-row"><h2>Points on the model</h2></div>
-    <p class="physical-help">Drag each point in the preview until its projected mark lands on the same place on the real surface.</p>
+    <div class="inspector-title-row"><h2>Points on the model</h2><button class="help-button" data-help="projector-points" type="button" aria-label="Help with projector points" aria-controls="help-popover" aria-expanded="false"><i class="ph ph-question" aria-hidden="true"></i></button></div>
     <div id="physical-pairs" class="physical-pairs" aria-label="Model landmarks"></div>
     <p id="physical-status" role="status"></p>
     <div class="physical-actions">
@@ -35,6 +34,7 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
     const current = pairs();
     if (selected !== null && !current[selected]) selected = current.length ? current.length - 1 : null;
     const hasMesh = Boolean(snapshot?.project.mesh);
+    q('#physical-status').hidden = !hasMesh;
     q('#physical-add').disabled = !hasMesh || current.length >= 12 || pending;
     const placement = snapshot?.project.placement;
     const landmarkCount = placement?.mappingMode === 'wrap'
