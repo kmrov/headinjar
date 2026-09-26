@@ -24,7 +24,7 @@ const HELP = {
     title: 'Mapping modes',
     lines: [
       { name: 'Front', detail: ' projects from the OBJ +Z side and stretches the image over the connected visible surface. Use Align to match landmarks.' },
-      { name: 'Wrap', detail: ' follows the face and sides without model UVs; the back stays untextured. Drag with Place image, then use Align.' },
+      { name: 'Wrap', detail: ' follows the face and sides without model UVs; the back stays untextured. In Place image, left-drag to move and right-drag horizontally to rotate. Turn off Place image to orbit, then use Align.' },
       { name: 'Surface', detail: ' places one image on a visible side. Click or drag on the model to aim it.' },
       { name: 'Model UV', detail: ' uses the OBJ’s own UV layout and needs a matching texture atlas. For an ordinary image, choose Front.' },
     ],

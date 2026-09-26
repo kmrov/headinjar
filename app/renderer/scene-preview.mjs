@@ -513,11 +513,11 @@ export function createScenePreview(canvas, onError, { projection = false, onView
     clearVideoSource(){if(!videoSourceActive)return;videoSourceActive=false;applyImageSource();draw();},
     setMode(value){if(value===mode)return;mode=value;if(mode==='placement')fit();else draw();},
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},
-    setNavigation(value, primaryOrbit=false){
+    setNavigation(value, primaryOrbit=false, rightOrbit=true){
       navigation=value;
       controls.enabled=value&&mode==='placement';
       controls.mouseButtons.LEFT=primaryOrbit?THREE.MOUSE.ROTATE:null;
-      controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;
+      controls.mouseButtons.RIGHT=rightOrbit?THREE.MOUSE.ROTATE:null;
       controls.touches.ONE=primaryOrbit?THREE.TOUCH.ROTATE:null;
     },
     setCalibrationEditing(value){calibrationEditing=Boolean(value);draw();},

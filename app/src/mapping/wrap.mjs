@@ -19,3 +19,8 @@ export function wrapFade(angle) {
 export function movedWrapTransform(original, start, current) {
   return { ...original, x: original.x + current.u - start.u, y: original.y + current.v - start.v };
 }
+
+export function rotatedWrapTransform(original, startX, currentX) {
+  const angle = original.rotation + (currentX - startX) * 0.5;
+  return { ...original, rotation: ((angle + 180) % 360 + 360) % 360 - 180 };
+}

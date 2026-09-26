@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapDomain, wrapFade, movedWrapTransform } from '../src/mapping/wrap.mjs';
+import { wrapDomain, wrapFade, movedWrapTransform, rotatedWrapTransform } from '../src/mapping/wrap.mjs';
 import { createProject, parseProject, serializeProject, validateProject } from '../src/project/model.mjs';
 import { createHistory, editHistory, undoHistory } from '../src/project/history.mjs';
 
@@ -22,6 +22,14 @@ test('dragging the image across wrap coordinates keeps scale and rotation', () =
   const original = { x: 0.125, y: -0.125, scale: 1.3, rotation: 20 };
   assert.deepEqual(movedWrapTransform(original, { u: 0.5, v: 0.5 }, { u: 0.625, v: 0.5625 }),
     { x: 0.25, y: -0.0625, scale: 1.3, rotation: 20 });
+});
+
+test('horizontal right drag rotates the image without moving or scaling it', () => {
+  const original = { x: 0.125, y: -0.125, scale: 1.3, rotation: 20 };
+  assert.deepEqual(rotatedWrapTransform(original, 200, 300),
+    { x: 0.125, y: -0.125, scale: 1.3, rotation: 70 });
+  assert.equal(rotatedWrapTransform(original, 200, 150).rotation, -5);
+  assert.equal(rotatedWrapTransform({ ...original, rotation: 170 }, 200, 250).rotation, -165);
 });
 
 test('wrap placement has independent undoable alignment and round-trips with old projects', () => {

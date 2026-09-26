@@ -1,7 +1,7 @@
 import { createScenePreview } from './scene-preview.mjs';
 import { moveGridPoint } from '../src/mapping/grid.mjs';
 import { fitLandmarkGrid } from '../src/mapping/alignment.mjs';
-import { movedWrapTransform } from '../src/mapping/wrap.mjs';
+import { movedWrapTransform, rotatedWrapTransform } from '../src/mapping/wrap.mjs';
 
 export function createViewport(host, callbacks={}) {
   host.style.position='relative';host.style.overflow='hidden';
@@ -33,7 +33,7 @@ export function createViewport(host, callbacks={}) {
     }else Object.assign(canvas.style,{inset:'0',left:'0',top:'0',width:'100%',height:'100%'});
     overlay.width=Math.max(1,w*dpr);overlay.height=Math.max(1,h*dpr);context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,w,h);
     const hasMesh=Boolean(snapshot?.project.mesh);
-    hint.textContent=!hasMesh||mode==='projector'?'':tool==='align'?'Right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Drag image across head · right-drag orbit':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'';
+    hint.textContent=!hasMesh||mode==='projector'?'':tool==='align'?'Right-drag orbit · middle-drag pan · wheel zoom':tool==='place'?(snapshot.project.placement.mappingMode==='wrap'?'Left-drag move image · right-drag rotate image':'Click or drag to place image · right-drag orbit'):tool==='grid'?'Drag a grid point · right-drag orbit':tool==='mask'?'Click outline · double-click to finish · right-drag orbit':'';
     if(mode==='projector'&&physical.active){
       const b=canvas.getBoundingClientRect(),hostBox=host.getBoundingClientRect();
       const at=p=>({x:b.left-hostBox.left+p.u*b.width,y:b.top-hostBox.top+p.v*b.height});
@@ -93,7 +93,8 @@ export function createViewport(host, callbacks={}) {
       context.strokeStyle=polygon.excluded?'#f29b92':'#b4e5cc';context.lineWidth=2;context.stroke();
     }
   }
-  function updateInput(){scene?.setNavigation(mode==='placement'&&!physical.active,!tool);draw();}
+  function updateInput(){scene?.setNavigation(mode==='placement'&&!physical.active,!tool,
+    !(tool==='place'&&snapshot?.project.placement.mappingMode==='wrap'));draw();}
   function clearPreview() {previewPairs=null;previewGrid=null;surfacePreview=null;scene?.clearPreview();draw();}
   function releaseSurfaceDrag(){
     if(surfaceDrag && canvas.hasPointerCapture(surfaceDrag.pointerId))canvas.releasePointerCapture(surfaceDrag.pointerId);
@@ -132,13 +133,14 @@ export function createViewport(host, callbacks={}) {
       }
       return;
     }
-    if(event.button!==0)return;
+    if(event.button!==0&&!(event.button===2&&tool==='place'&&snapshot.project.placement.mappingMode==='wrap'))return;
     if(tool==='place'){
       if(snapshot.project.placement.mappingMode==='wrap'){
         const start=scene?.pick(event.clientX,event.clientY);
         if(!start)return;
         event.preventDefault();host.focus({preventScroll:true});
-        wrapDrag={pointerId:event.pointerId,start,original:structuredClone(snapshot.project.placement.wrap.transform),latest:null};
+        wrapDrag={pointerId:event.pointerId,kind:event.button===2?'rotate':'move',start,startX:event.clientX,
+          original:structuredClone(snapshot.project.placement.wrap.transform),latest:null};
         canvas.setPointerCapture(event.pointerId);
         return;
       }
@@ -183,12 +185,13 @@ export function createViewport(host, callbacks={}) {
       return;
     }
     if(wrapDrag?.pointerId===event.pointerId){
-      const current=scene?.pick(event.clientX,event.clientY);
-      if(current){
-        const transform=movedWrapTransform(wrapDrag.original,wrapDrag.start,current);
-        wrapDrag.latest=transform;
-        scene?.previewPlacement({...snapshot.project.placement,wrap:{...snapshot.project.placement.wrap,transform}});draw();
-      }
+      const current=wrapDrag.kind==='rotate'?null:scene?.pick(event.clientX,event.clientY);
+      if(wrapDrag.kind==='move'&&!current)return;
+      const transform=wrapDrag.kind==='rotate'
+        ?rotatedWrapTransform(wrapDrag.original,wrapDrag.startX,event.clientX)
+        :movedWrapTransform(wrapDrag.original,wrapDrag.start,current);
+      wrapDrag.latest=transform;
+      scene?.previewPlacement({...snapshot.project.placement,wrap:{...snapshot.project.placement.wrap,transform}});draw();
       return;
     }
     if(alignmentPan){
