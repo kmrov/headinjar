@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapDomain, wrapFade, movedWrapTransform, rotatedWrapTransform } from '../src/mapping/wrap.mjs';
+import { wrapDomain, wrapFade, wrapAngleFromU, movedWrapTransform, rotatedWrapTransform } from '../src/mapping/wrap.mjs';
 import { createProject, parseProject, serializeProject, validateProject } from '../src/project/model.mjs';
 import { createHistory, editHistory, undoHistory } from '../src/project/history.mjs';
 
@@ -10,12 +10,12 @@ const pair = (u, v, source = { u, v }) => ({ source, target: { u, v } });
 
 test('wrap coordinates follow the front and both sides, and exclude the back', () => {
   assert.deepEqual(wrapDomain([0, 0, 1], bounds), { u: 0.5, v: 0.5 });
-  assert.ok(Math.abs(wrapDomain([1, 0, 0], bounds).u - 0.95) < 1e-12);
-  assert.ok(Math.abs(wrapDomain([-1, 0, 0], bounds).u - 0.05) < 1e-12);
+  assert.ok(wrapDomain([1, 0, 0], bounds).u > 0.9);
+  assert.ok(wrapDomain([-1, 0, 0], bounds).u < 0.1);
   assert.equal(wrapDomain([0, 0, -1], bounds), null);
   assert.equal(wrapFade(0), 1);
   assert.ok(wrapFade(90 * Math.PI / 180) > 0.999999);
-  assert.ok(wrapFade(100 * Math.PI / 180) < 0.000001);
+  assert.ok(wrapFade(140 * Math.PI / 180) < 0.000001);
 });
 
 test('dragging the image across wrap coordinates keeps scale and rotation', () => {
@@ -52,4 +52,21 @@ test('wrap placement has independent undoable alignment and round-trips with old
   delete legacy.placement.wrap;
   assert.equal(validateProject(legacy).valid, true);
   assert.deepEqual(parseProject(serializeProject(legacy)).placement, legacy.placement);
+});
+
+// Preserve fitted facial coordinates while covering ears behind the side plane.
+test('wrap keeps central face coordinates and covers recessed ears on both sides', () => {
+  for (const degrees of [-70, -40, 0, 40, 70]) {
+    const angle=degrees*Math.PI/180;
+    const uv=wrapDomain([Math.sin(angle),0,Math.cos(angle)],bounds);
+    assert.ok(Math.abs(uv.u-(0.5+degrees/200))<1e-12);
+  }
+  for (const degrees of [-125, -110, 110, 125]) {
+    const angle=degrees*Math.PI/180;
+    const uv=wrapDomain([Math.sin(angle),0,Math.cos(angle)],bounds);
+    assert.ok(uv && uv.u>0 && uv.u<1, `ear at ${degrees} degrees is editable`);
+    assert.equal(wrapFade(angle),1, 'ears have full texture opacity');
+    assert.ok(Math.abs(wrapAngleFromU(uv.u)-angle)<1e-12, 'picking and alignment rays agree');
+  }
+  assert.equal(wrapDomain([0.5,0,-Math.sqrt(3)/2],bounds),null,'rear at 150 degrees stays excluded');
 });

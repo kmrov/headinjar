@@ -3,7 +3,7 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createProjectionWarp } from './projection-warp.mjs';
 import { surfaceFromHit, surfaceProjectionFrame } from '../src/mapping/surface.mjs';
-import { WRAP_FADE_START, WRAP_HALF_ANGLE, wrapDomain } from '../src/mapping/wrap.mjs';
+import { WRAP_FADE_START, WRAP_HALF_ANGLE, WRAP_FACE_ANGLE, WRAP_TEXTURE_HALF_ANGLE, wrapAngleFromU, wrapDomain } from '../src/mapping/wrap.mjs';
 
 const MIN_MODEL_ZOOM = 1;
 const MAX_MODEL_ZOOM = 8;
@@ -90,7 +90,14 @@ export function createScenePreview(canvas, onError, { projection = false, onView
         vec2 projectedDomain=domain;
         float wrapAngle=atan(localPosition.x-boundsMin.x-boundsSize.x*0.5,localPosition.z-wrapCenterZ);
         float wrapOpacity=useWrap?clamp((wrapHalfAngle-abs(wrapAngle))/(wrapHalfAngle-wrapFadeStart),0.0,1.0):1.0;
-        if(useWrap)projectedDomain=vec2(0.5+wrapAngle/(2.0*wrapHalfAngle),domain.y);
+        if(useWrap){
+          float faceAngle=${WRAP_FACE_ANGLE};
+          float textureHalfAngle=${WRAP_TEXTURE_HALF_ANGLE};
+          float magnitude=abs(wrapAngle);
+          float mapped=magnitude<=faceAngle?magnitude:faceAngle+(magnitude-faceAngle)
+            *(textureHalfAngle-faceAngle)/(wrapHalfAngle-faceAngle);
+          projectedDomain=vec2(0.5+sign(wrapAngle)*mapped/(2.0*textureHalfAngle),domain.y);
+        }
         if(useSurface){vec3 relative=localPosition-planeOrigin;
           projectedDomain=vec2(0.5+dot(relative,planeRight)/planeSize.x,0.5-dot(relative,planeUp)/planeSize.y);
         }
@@ -431,7 +438,7 @@ export function createScenePreview(canvas, onError, { projection = false, onView
     scene.updateMatrixWorld(true);
     let origin,direction;
     if(snapshot?.project.placement.mappingMode==='wrap'){
-      const theta=(point.u-0.5)*2*WRAP_HALF_ANGLE;
+      const theta=wrapAngleFromU(point.u);
       const radial=new THREE.Vector3(Math.sin(theta),0,Math.cos(theta));
       const distance=Math.max(modelBounds.max.x-modelBounds.min.x,modelBounds.max.z-modelBounds.min.z,1)*2;
       origin=new THREE.Vector3((modelBounds.min.x+modelBounds.max.x)/2,
