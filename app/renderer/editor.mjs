@@ -5,6 +5,7 @@ import '@phosphor-icons/web/regular';
 import './editor.css';
 import { createViewport } from './viewport.mjs';
 import { createAlignmentPanel } from './alignment-panel.mjs';
+import { commandForAddedAlignmentPair } from './alignment-addition.mjs';
 import { createPhysicalCalibration } from './physical-calibration.mjs';
 import { createWebRTCPanel } from './webrtc-panel.mjs';
 import { createEditorWebRTCSource } from './editor-webrtc-source.mjs';
@@ -458,6 +459,13 @@ async function commitAlignmentPairs(pairs, apply = false) {
   return editProject({ type, value: pairs });
 }
 
+async function commitNewAlignmentPair(pairs) {
+  const { command, warning } = commandForAddedAlignmentPair(pairs);
+  const result = await editProject(command);
+  if (warning) showFeedback(`Point saved, but alignment cannot be applied: ${warning}`, { error: true, persistent: true });
+  return result;
+}
+
 function updateAlignmentPreview(pairs) {
   viewportApi?.previewAlignment(pairs);
   alignmentPanel?.render({ snapshot, pairs, selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: snapshot?.project?.placement?.mappingMode || 'front' });
@@ -701,7 +709,7 @@ try {
       pendingAlignmentSource = null;
       selectedAlignment = pairs.length - 1;
       return safely(async () => {
-        await commitAlignmentPairs(pairs);
+        await commitNewAlignmentPair(pairs);
         selectedAlignment=pairs.length-1;
         viewportApi?.setAlignmentSelection(selectedAlignment);
         renderAlignment();

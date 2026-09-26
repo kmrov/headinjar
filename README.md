@@ -58,7 +58,7 @@ Start with the [illustrated beginner tutorial](docs/tutorial.md). Its screenshot
 ## Your first projection 🎯
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
-2. **Place the texture.** Use Front mapping for an image on the OBJ's +Z side. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. Choose **Apply alignment** to fit the texture. To place one image on another side, choose **Surface**, orbit with **Move**, then click or drag the model with **Place image**.
+2. **Place the texture.** Use Front mapping for an image on the OBJ's +Z side. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. The texture fits automatically as valid pairs are added. To place one image on another side, choose **Surface**, orbit with **Move**, then click or drag the model with **Place image**.
 3. **Refine coverage.** Use Mask to limit coverage. Double-click to finish a mask contour.
 4. **Choose an output display.** Click **Choose display** in the bottom bar, select the projector, then click **Start projection**. Output opens black until explicitly started.
 5. **Match the physical object.** Open **Projector calibration** and drag its model points until their projected marks match the real surface, then click **Apply**.

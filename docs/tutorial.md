@@ -33,7 +33,7 @@ In the toolbar, keep **Image placement** selected and set **Mapping** to **Front
 
 To put one image or live video on another side, choose **Surface**. Orbit the model with **Move**, choose **Place image**, then click or drag on the visible surface. The center handle shows the saved location; the Surface inspector adjusts scale and rotation. Switching back to Front preserves its own alignment settings. A new OBJ clears the Surface location because its coordinates refer to the old model.
 
-For a more accurate fit, choose **Align**. Click a recognizable point on the source image, then the matching point on the model. Add at least three points that are not in a straight line; eyes, nose, mouth corners, and chin are useful face landmarks. Click **Apply alignment**. The editor calculates a 17 × 17 control grid from those pairs.
+For a more accurate fit, choose **Align**. Click a recognizable point on the source image, then the matching point on the model. Add at least three points that are not in a straight line; eyes, nose, mouth corners, and chin are useful face landmarks. The editor automatically calculates a 17 × 17 control grid when the pairs form a valid fit. **Reapply alignment** recalculates it after later changes to the image placement.
 
 ![Align tool with paired image and model landmarks](tutorial/assets/alignment-points.png)
 
