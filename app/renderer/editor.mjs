@@ -46,7 +46,7 @@ const workspaceLayout = createWorkspaceLayout({
 
 let snapshot = null;
 let activeMode = 'placement';
-let activeTool = 'move';
+let activeTool = null;
 let maskMode = 'keep';
 let selectedAlignment = null;
 let pendingAlignmentSource = null;
@@ -65,8 +65,8 @@ let lastSnapshotError = null;
 alignmentPanel = createAlignmentPanel(ui.alignmentSource, ui.alignmentPanel, {
   onSourcePoint: (point) => {
     if (activeMode !== 'placement' || activeTool !== 'align') return;
-    if (snapshot?.project?.placement?.mappingMode !== 'front') {
-      showFeedback('Switch to Front mapping to place landmarks.');
+    if (!['front', 'wrap'].includes(snapshot?.project?.placement?.mappingMode)) {
+      showFeedback('Switch to Front or Wrap mapping to place landmarks.');
       return;
     }
     if (alignmentPairs().length >= 12) {
@@ -74,7 +74,8 @@ alignmentPanel = createAlignmentPanel(ui.alignmentSource, ui.alignmentPanel, {
       return;
     }
     pendingAlignmentSource = point;
-    alignmentPanel.render({ snapshot, pairs: alignmentPairs(), selected: selectedAlignment, pending: true, pendingSource: pendingAlignmentSource, mode: 'front' });
+    alignmentPanel.render({ snapshot, pairs: alignmentPairs(), selected: selectedAlignment, pending: true, pendingSource: pendingAlignmentSource,
+      mode: snapshot.project.placement.mappingMode });
   },
   onSelect: (index) => {
     selectedAlignment = index;
@@ -241,10 +242,12 @@ function setMode(mode) {
 
 function setTool(tool) {
   pendingAlignmentSource=null;
-  activeTool = ['move', 'place', 'mask', 'align'].includes(tool) ? tool : 'move';
+  activeTool = ['place', 'mask', 'align'].includes(tool) ? tool : null;
   const mappingMode=snapshot?.project?.placement?.mappingMode??'front';
-  if ((activeTool==='place' && (mappingMode!=='surface'||!snapshot?.project?.mesh)) || (['mask','align'].includes(activeTool) && mappingMode!=='front')) {
-    activeTool = 'move';
+  if ((activeTool==='place' && (!['surface','wrap'].includes(mappingMode)||!snapshot?.project?.mesh))
+    || (activeTool==='mask' && mappingMode!=='front')
+    || (activeTool==='align' && !['front','wrap'].includes(mappingMode))) {
+    activeTool = null;
     showFeedback('Choose the matching mapping mode for this tool.');
   }
   $$('.tool-button').forEach((button) => {
@@ -260,11 +263,13 @@ function setTool(tool) {
   ui.maskPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.surfacePanel.hidden = activeMode === 'projector' || mappingMode !== 'surface';
   if (activeTool === 'align') {
-    viewportApi?.fit();
-    if (snapshot?.project?.placement?.mappingMode === 'uv') showFeedback('Switch to Front mapping to place landmarks.');
+    if (mappingMode === 'front') viewportApi?.fit();
+    if (snapshot?.project?.placement?.mappingMode === 'uv') showFeedback('Switch to Front or Wrap mapping to place landmarks.');
     else showFeedback('Click a point on the image, then the matching point on the model.');
   }
-  else if (activeTool === 'place') showFeedback('Click or drag on a visible model surface to place the image. Choose Move to orbit.');
+  else if (activeTool === 'place') showFeedback(mappingMode === 'wrap'
+    ? 'Drag the image across the head. Right-drag to orbit.'
+    : 'Click or drag on a visible model surface to place the image. Right-drag to orbit.');
   else if (activeTool === 'mask') showFeedback(maskMode === 'exclude'
     ? 'Click around the surface to draw an excluded area, then double-click to finish.'
     : 'Click around the surface to draw the visible area, then double-click to finish.');
@@ -322,7 +327,7 @@ function renderProject(project) {
         : referenceStatus === 'error' ? 'Preview unavailable' : 'Reference preview unavailable';
   }
 
-  const transform = project.placement.transform;
+  const transform = activeImageMapping(project.placement).transform;
   ui.placementX.value = formatNumber(transform.x, 3);
   ui.placementY.value = formatNumber(transform.y, 3);
   ui.placementScale.value = formatNumber(transform.scale * 100, 1);
@@ -382,7 +387,7 @@ function renderSnapshot(next) {
   const nextProject=next.project;
   if(previousProject && nextProject && (previousProject.id!==nextProject.id ||
       previousProject.mesh?.obj!==nextProject.mesh?.obj || previousProject.reference?.path!==nextProject.reference?.path ||
-      (previousProject.placement.alignment?.pairs?.length??0)!==(nextProject.placement.alignment?.pairs?.length??0))) {
+      (activeImageMapping(previousProject.placement).alignment?.pairs?.length??0)!==(activeImageMapping(nextProject.placement).alignment?.pairs?.length??0))) {
     pendingAlignmentSource=null;
     selectedAlignment=null;
     viewportApi?.setAlignmentSelection(null);
@@ -413,45 +418,56 @@ async function editProject(command, successMessage) {
 }
 
 function alignmentPairs() {
-  return snapshot?.project?.placement?.alignment?.pairs || [];
+  return snapshot?.project?.placement ? activeImageMapping(snapshot.project.placement).alignment?.pairs || [] : [];
+}
+
+function activeImageMapping(placement) {
+  return placement.mappingMode === 'wrap' ? placement.wrap : placement;
 }
 
 function renderAlignment(project = snapshot?.project) {
   if (!project || !alignmentPanel) return;
   const placement = project.placement || {};
-  const mappingMode = ['uv','surface'].includes(placement.mappingMode) ? placement.mappingMode : 'front';
+  const mappingMode = ['uv','surface','wrap'].includes(placement.mappingMode) ? placement.mappingMode : 'front';
+  const activeMapping = activeImageMapping(placement);
   const hasMesh=Boolean(project.mesh);
   ui.mappingMode.value = mappingMode;
   ui.mappingMode.querySelector('option[value="surface"]').disabled=!hasMesh;
+  ui.mappingMode.querySelector('option[value="wrap"]').disabled=!hasMesh;
   $('#mapping-front-note').hidden=mappingMode!=='front'||activeMode!=='placement';
+  $('#mapping-wrap-note').hidden=mappingMode!=='wrap'||activeMode!=='placement';
   $('#mapping-uv-note').hidden=mappingMode!=='uv'||activeMode!=='placement';
   $('#mapping-surface-note').hidden=mappingMode!=='surface'||activeMode!=='placement';
   const front = mappingMode === 'front';
+  const wrap = mappingMode === 'wrap';
+  const alignable = front || wrap;
   const uv = mappingMode === 'uv';
   $('#mapping-mode').closest('.mapping-mode-control').hidden = activeMode !== 'placement';
   ui.alignmentModeNote.textContent = uv
     ? 'Model UV maps the full texture atlas. Align, Mask, and image transform controls apply to Front mapping only.'
     : mappingMode === 'surface' ? 'Surface placement uses one movable image. Choose Place image to position it.'
+    : wrap ? 'Drag the image across the head with Place image, then pair points on the image and model.'
     : 'Pair matching points on the image and model. Use at least three landmarks.';
-  $$('.tool-button[data-tool="mask"], .tool-button[data-tool="align"]').forEach((button) => {
-    button.disabled = !front;
-    button.title = front ? '' : 'Available in Front mapping';
-  });
-  $('[data-tool="place"]').hidden = mappingMode !== 'surface';
+  $('[data-tool="mask"]').disabled = !front;
+  $('[data-tool="mask"]').title = front ? '' : 'Available in Front mapping';
+  $('[data-tool="align"]').disabled = !alignable;
+  $('[data-tool="align"]').title = alignable ? '' : 'Available in Front or Wrap mapping';
+  $('[data-tool="place"]').hidden = !['surface','wrap'].includes(mappingMode);
   $('[data-tool="place"]').disabled = !hasMesh;
   ui.placementPanel.classList.toggle('is-uv-disabled', uv);
-  [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation, $('#reset-placement')].forEach((control) => { control.disabled = !front; });
+  [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation, $('#reset-placement')].forEach((control) => { control.disabled = !alignable; });
   ui.maskPanel.classList.toggle('is-uv-disabled', uv);
-  ui.placementPanel.hidden = activeMode !== 'placement' || !front || activeTool === 'align';
+  ui.placementPanel.hidden = activeMode !== 'placement' || !alignable || activeTool === 'align';
   ui.surfacePanel.hidden = activeMode !== 'placement' || mappingMode !== 'surface';
   ui.maskPanel.hidden = activeMode !== 'placement' || !front || activeTool === 'align';
   const surface=placement.surface??null;
-  ui.surfaceStatus.textContent=!hasMesh?'Import an OBJ to place the image on its surface.':surface?'Drag on the model to move this image. Choose Move to orbit.':'Click the model to place the image.';
+  ui.surfaceStatus.textContent=!hasMesh?'Import an OBJ to place the image on its surface.':surface?'Drag on the model to move this image. Right-drag to orbit.':'Click the model to place the image. Right-drag to orbit.';
   ui.surfaceScale.value=formatNumber((surface?.scale??1)*100,1);
   ui.surfaceRotation.value=formatNumber(surface?.rotation??0,1);
   [ui.surfaceScale,ui.surfaceRotation,ui.resetSurface].forEach(control=>{control.disabled=!surface;});
-  if ((!front && ['mask','align'].includes(activeTool)) || ((!hasMesh || mappingMode!=='surface') && activeTool==='place')) setTool('move');
-  alignmentPanel.render({ snapshot, pairs: placement.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: mappingMode });
+  if ((activeTool==='mask'&&!front) || (activeTool==='align'&&!alignable)
+    || ((!hasMesh || !['surface','wrap'].includes(mappingMode)) && activeTool==='place')) setTool(null);
+  alignmentPanel.render({ snapshot, pairs: activeMapping.alignment?.pairs || [], selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: mappingMode });
 }
 
 async function commitAlignmentPairs(pairs, apply = false) {
@@ -471,18 +487,12 @@ function updateAlignmentPreview(pairs) {
   alignmentPanel?.render({ snapshot, pairs, selected: selectedAlignment, pending: Boolean(pendingAlignmentSource), pendingSource: pendingAlignmentSource, mode: snapshot?.project?.placement?.mappingMode || 'front' });
 }
 
-function placementValueFromInputs() {
-  return {
-    x: number(ui.placementX.value, 'X position'),
-    y: number(ui.placementY.value, 'Y position'),
-    scale: number(ui.placementScale.value, 'Scale') / 100,
-    rotation: number(ui.placementRotation.value, 'Rotation'),
-  };
-}
-
-function commitPlacement() {
+function commitPlacement(input, field, label, divisor = 1) {
   if (!snapshot?.project) return;
-  return safely(() => editProject({ type: 'placement-transform', value: placementValueFromInputs() }));
+  return safely(() => editProject({ type: 'placement-transform', value: {
+    ...activeImageMapping(snapshot.project.placement).transform,
+    [field]: number(input.value, label) / divisor,
+  } }));
 }
 
 async function saveProject() {
@@ -615,12 +625,12 @@ function bindEvents() {
   });
   $('#mode-placement').addEventListener('click', () => setMode('placement'));
   $('#mode-projector').addEventListener('click', () => setMode('projector'));
-  $$('.tool-button').forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool)));
+  $$('.tool-button').forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool===activeTool?null:button.dataset.tool)));
   $('#mapping-mode').addEventListener('change', (event) => {
-    const next = ['uv','surface'].includes(event.currentTarget.value) ? event.currentTarget.value : 'front';
-    if (next === 'surface' && !snapshot?.project?.mesh) {
+    const next = ['uv','surface','wrap'].includes(event.currentTarget.value) ? event.currentTarget.value : 'front';
+    if (['surface','wrap'].includes(next) && !snapshot?.project?.mesh) {
       event.currentTarget.value = snapshot?.project?.placement?.mappingMode ?? 'front';
-      reportError(new Error('Import an OBJ before choosing Surface mapping.'));
+      reportError(new Error(`Import an OBJ before choosing ${next === 'wrap' ? 'Wrap' : 'Surface'} mapping.`));
       return;
     }
     if (next === 'uv' && !viewportApi?.hasUV?.()) {
@@ -630,7 +640,7 @@ function bindEvents() {
     }
     safely(async () => {
       const result = await editProject({ type: 'mapping-mode', value: next });
-      setTool(next === 'surface' ? 'place' : 'move');
+      setTool(['surface','wrap'].includes(next) ? 'place' : null);
       return result;
     });
   });
@@ -650,7 +660,9 @@ function bindEvents() {
       }
     });
   });
-  [ui.placementX, ui.placementY, ui.placementScale, ui.placementRotation].forEach((input) => input.addEventListener('change', commitPlacement));
+  [[ui.placementX, 'x', 'X position', 1], [ui.placementY, 'y', 'Y position', 1],
+    [ui.placementScale, 'scale', 'Scale', 100], [ui.placementRotation, 'rotation', 'Rotation', 1]]
+    .forEach(([input, field, label, divisor]) => input.addEventListener('change', () => commitPlacement(input, field, label, divisor)));
   [ui.surfaceScale,ui.surfaceRotation].forEach(input=>input.addEventListener('change',()=>{
     const surface=snapshot?.project?.placement?.surface;
     if(!surface)return;
@@ -702,6 +714,7 @@ try {
     onPhysicalCancel: () => physicalCalibration?.cancelDrag(),
     onGridPoint: (index, point) => safely(() => editProject({ type: 'grid-point', index, point })),
     onSurfacePlacement: value => safely(() => editProject({type:'surface-placement',value})),
+    onWrapTransform: value => safely(() => editProject({type:'placement-transform',value})),
     onMask: (polygons) => safely(() => editProject({ type: 'mask', value: polygons })),
     onAlignmentTarget: (target) => {
       if (!pendingAlignmentSource || alignmentPairs().length >= 12) return;

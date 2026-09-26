@@ -113,6 +113,17 @@ try {
     await editor.locator('#import-reference').click();
     await editor.waitForFunction(async()=>Boolean((await window.desktop.getSnapshot()).referencePreview));
     await editor.locator('[data-tool="align"]').click();
+    const alignView=editor.locator('#viewport');
+    const alignBox=await alignView.boundingBox();
+    const alignBefore=await alignView.screenshot({scale:'css'});
+    const alignRevision=(await invoke('getSnapshot')).project.revision;
+    await editor.mouse.move(alignBox.x+alignBox.width/2,alignBox.y+alignBox.height/2);
+    await editor.mouse.down({button:'right'});
+    await editor.mouse.move(alignBox.x+alignBox.width/2+90,alignBox.y+alignBox.height/2,{steps:8});
+    await editor.mouse.up({button:'right'});
+    assert.notDeepEqual(await alignView.screenshot({scale:'css'}),alignBefore,'right-drag orbits while Align is active');
+    assert.equal((await invoke('getSnapshot')).project.revision,alignRevision,'orbiting does not add a landmark');
+    await editor.locator('#fit-view').click();
     const sourceFrame=editor.locator('.alignment-image-frame');
     const sourceBox=await sourceFrame.boundingBox();
     const sourceX=sourceBox.x+sourceBox.width/2,sourceY=sourceBox.y+sourceBox.height/2;
@@ -141,7 +152,7 @@ try {
     await editor.mouse.up({button:'middle'});
     assert.equal(await editor.locator('.alignment-image').evaluate(image=>image.style.transform),'translate(20px, 15px) scale(1)','middle-button pan still works');
     await editor.locator('#alignment-source-fit').click();
-    await editor.locator('[data-tool="move"]').click();
+    await editor.locator('[data-tool="align"]').click();
     await invoke('editProject',{type:'alignment-pairs',value:[{source:{u:0.5,v:0.5},target:{u:0.5,v:0.5}}]});
     await editor.locator('[data-tool="align"]').click();
     const sourceMarker=editor.locator('.alignment-marker:not(.is-pending)').first();
@@ -163,7 +174,7 @@ try {
     const movedPair=(await invoke('getSnapshot')).project.placement.alignment.pairs[0];
     assert.deepEqual(movedPair.target,{u:0.5,v:0.5},'dragging an image landmark preserves its paired model point');
     assert.equal(await editor.locator('.alignment-marker:not(.is-pending)').count(),1,'dragging a landmark keeps the pair count');
-    await editor.locator('[data-tool="move"]').click();
+    await editor.locator('[data-tool="align"]').click();
     assert.match(await editor.locator('#projection-toggle').innerText(), /Choose display/);
     assert.equal(await editor.locator('#physical-calibration').count(), 1);
     await editor.waitForFunction(()=>document.querySelector('#reference-thumb')?.complete);
@@ -178,6 +189,16 @@ try {
     const size=Math.max(100,Math.min(240,box.width-80,box.height-150));
     const x=box.x+box.width-size-36,y=box.y+66;
     await editor.locator('[data-tool="mask"]').click();
+    const maskView=editor.locator('#viewport');
+    const maskBefore=await maskView.screenshot({scale:'css'});
+    const maskRevision=(await invoke('getSnapshot')).project.revision;
+    await editor.mouse.move(box.x+box.width/2,box.y+box.height/2);
+    await editor.mouse.down({button:'right'});
+    await editor.mouse.move(box.x+box.width/2+90,box.y+box.height/2,{steps:8});
+    await editor.mouse.up({button:'right'});
+    assert.notDeepEqual(await maskView.screenshot({scale:'css'}),maskBefore,'right-drag orbits while Mask is active');
+    assert.equal((await invoke('getSnapshot')).project.revision,maskRevision,'orbiting does not add a mask point');
+    await editor.locator('#fit-view').click();
     await editor.locator('#mask-mode').selectOption('exclude');
     await editor.mouse.click(x+size*.2,y+size*.2);
     await editor.mouse.click(x+size*.4,y+size*.2);
@@ -185,7 +206,7 @@ try {
     await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.mask.some(p=>p.excluded));
     await editor.locator('#clear-mask').click();
     await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.mask.length===0);
-    await editor.locator('[data-tool="move"]').click();
+    await editor.locator('[data-tool="mask"]').click();
 
   }
 

@@ -62,7 +62,7 @@ export function isValidProjectEditCommand(command) {
   if (type === 'calibration-pairs' || type === 'calibration-apply' || type === 'calibration-reseed') {
     return validLandmarkPairs(readData(command, 'value'), type === 'calibration-apply' ? 3 : 0);
   }
-  if (type === 'mapping-mode') return ['front', 'uv', 'surface'].includes(readData(command, 'value'));
+  if (type === 'mapping-mode') return ['front', 'uv', 'surface', 'wrap'].includes(readData(command, 'value'));
   if (type === 'surface-placement') return isSurfacePlacement(readData(command, 'value'));
   return true;
 }

@@ -3,13 +3,14 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createProjectionWarp } from './projection-warp.mjs';
 import { surfaceFromHit, surfaceProjectionFrame } from '../src/mapping/surface.mjs';
+import { WRAP_FADE_START, WRAP_HALF_ANGLE, wrapDomain } from '../src/mapping/wrap.mjs';
 
 const MIN_MODEL_ZOOM = 1;
 const MAX_MODEL_ZOOM = 8;
 const FRONT_DEPTH_RESOLUTION = 2048;
 
 // The shell owns arming; projection mode renders unlit color on black.
-export function createScenePreview(canvas, onError, { projection = false } = {}) {
+export function createScenePreview(canvas, onError, { projection = false, onViewChange } = {}) {
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
   renderer.setPixelRatio(projection ? 1 : Math.min(devicePixelRatio, 2));
   renderer.setClearColor(projection ? 0x000000 : 0x0d1012);
@@ -19,6 +20,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   camera.position.set(0, 0, 3.5);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: null, RIGHT: THREE.MOUSE.ROTATE };
   const pivot = new THREE.Group();
   scene.add(pivot);
   let meshKey = null, model = null, snapshot = null, mode = 'placement', wireframe = false, navigation = true, calibrationEditing = false;
@@ -33,7 +35,8 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     image: {value:null}, grid: {value:null}, coverage:{value:maskTexture}, frontDepth:{value:null}, hasImage:{value:false},
     gridSize:{value:new THREE.Vector2(5,5)}, boundsMin:{value:new THREE.Vector2()},
     boundsSize:{value:new THREE.Vector2(1,1)}, translation:{value:new THREE.Vector2()},
-    imageScale:{value:1}, angle:{value:0}, textureOpacity:{value:1}, useModelUV:{value:false}, useSurface:{value:false}, surfacePlaced:{value:false}, uvAvailable:{value:false},
+    imageScale:{value:1}, angle:{value:0}, textureOpacity:{value:1}, useModelUV:{value:false}, useSurface:{value:false}, useWrap:{value:false}, surfacePlaced:{value:false}, uvAvailable:{value:false},
+    wrapCenterZ:{value:0}, wrapHalfAngle:{value:WRAP_HALF_ANGLE}, wrapFadeStart:{value:WRAP_FADE_START},
     planeOrigin:{value:new THREE.Vector3()}, planeRight:{value:new THREE.Vector3(1,0,0)}, planeUp:{value:new THREE.Vector3(0,1,0)},
     planeNormal:{value:new THREE.Vector3(0,0,1)}, planeSize:{value:new THREE.Vector2(1,1)}, depthMin:{value:0}, depthRange:{value:1},
     frontViewProjection:{value:new THREE.Matrix4()},
@@ -46,7 +49,8 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader:`precision highp float;
       varying float frontWrapSurface; varying vec3 surfaceNormal; varying vec3 localPosition; varying vec2 modelUV; varying vec2 domain; uniform sampler2D image; uniform sampler2D grid; uniform sampler2D coverage; uniform sampler2D frontDepth;
-      uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
+      uniform vec2 gridSize; uniform vec2 translation; uniform float imageScale; uniform float angle; uniform bool hasImage; uniform bool useModelUV; uniform bool useSurface; uniform bool useWrap; uniform bool surfacePlaced; uniform bool uvAvailable; uniform float textureOpacity;
+      uniform vec2 boundsMin; uniform vec2 boundsSize; uniform float wrapCenterZ; uniform float wrapHalfAngle; uniform float wrapFadeStart;
       uniform vec3 planeOrigin; uniform vec3 planeRight; uniform vec3 planeUp; uniform vec3 planeNormal; uniform vec2 planeSize; uniform float depthMin; uniform float depthRange; uniform mat4 frontViewProjection;
       // The depth texture is packed into two channels, so decode each texel
       // before interpolating. Interpolating packed bytes would wrap at 256.
@@ -84,6 +88,9 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
         #endif
         // Compare in original model space so orbit and projector poses do not change visibility.
         vec2 projectedDomain=domain;
+        float wrapAngle=atan(localPosition.x-boundsMin.x-boundsSize.x*0.5,localPosition.z-wrapCenterZ);
+        float wrapOpacity=useWrap?clamp((wrapHalfAngle-abs(wrapAngle))/(wrapHalfAngle-wrapFadeStart),0.0,1.0):1.0;
+        if(useWrap)projectedDomain=vec2(0.5+wrapAngle/(2.0*wrapHalfAngle),domain.y);
         if(useSurface){vec3 relative=localPosition-planeOrigin;
           projectedDomain=vec2(0.5+dot(relative,planeRight)/planeSize.x,0.5-dot(relative,planeUp)/planeSize.y);
         }
@@ -100,8 +107,13 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           bool extendFront=!useSurface && frontWrapSurface>0.5
             && dot(faceNormal,planeNormal)>-0.2
             && (dot(faceNormal,planeNormal)<0.9 || (front.y>=0.5 && front.x-modelDepth>0.05));
+          if(useWrap){
+            vec3 radial=normalize(vec3(localPosition.x-boundsMin.x-boundsSize.x*0.5,0.0,localPosition.z-wrapCenterZ));
+            extendFront=frontWrapSurface>0.5 && dot(faceNormal,radial)>-0.2;
+          }
           if((useSurface && !surfacePlaced) || frontClip.w<=0.0
             || any(lessThan(frontUv,vec2(0.0))) || any(greaterThan(frontUv,vec2(1.0)))
+            || (useWrap && abs(wrapAngle)>=wrapHalfAngle)
             || (frontOccluded && !extendFront)){
             gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light,1.0);
             #ifdef PROJECTION_OUTPUT
@@ -119,19 +131,26 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
           #include <colorspace_fragment>
           return;
         }
-        vec2 d=clamp(domain,0.0,1.0); vec2 g=d*(gridSize-1.0); vec2 cell=min(floor(g),gridSize-2.0); vec2 f=g-cell;
+        vec2 d=clamp(useWrap?projectedDomain:domain,0.0,1.0); vec2 g=d*(gridSize-1.0); vec2 cell=min(floor(g),gridSize-2.0); vec2 f=g-cell;
         vec2 tl=at(cell),tr=at(cell+vec2(1.,0.)),br=at(cell+vec2(1.,1.)),bl=at(cell+vec2(0.,1.));
         vec2 uv=f.y<=f.x ? tl*(1.-f.x)+tr*(f.x-f.y)+br*f.y : tl*(1.-f.y)+br*f.x+bl*(f.y-f.x);
         uv=(uv-0.5-translation)/imageScale; float c=cos(angle),s=sin(angle);
         uv=vec2(c*uv.x+s*uv.y,-s*uv.x+c*uv.y)+0.5;
-        float mask=texture2D(coverage,vec2(d.x,1.-d.y)).r;
+        float mask=useWrap?1.0:texture2D(coverage,vec2(d.x,1.-d.y)).r;
         if(useSurface){uv=projectedDomain;mask=1.0;}
         if(useModelUV){uv=vec2(modelUV.x,1.-modelUV.y);mask=1.0;}
-        if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.)))||mask<0.5){gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light*(1.-textureOpacity),1.);
+        if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.)))||mask<0.5||wrapOpacity<=0.0){gl_FragColor=vec4(vec3(0.46,0.49,0.50)*light*(1.-textureOpacity),1.);
+          #ifdef PROJECTION_OUTPUT
+            gl_FragColor=vec4(0.,0.,0.,1.);
+          #endif
           #include <colorspace_fragment>
           return;}
         gl_FragColor=texture2D(image,vec2(uv.x,1.-uv.y));
-        gl_FragColor.rgb=mix(vec3(0.46,0.49,0.50),gl_FragColor.rgb,textureOpacity)*light;
+        vec3 neutral=vec3(0.46,0.49,0.50);
+        #ifdef PROJECTION_OUTPUT
+          neutral=vec3(0.0);
+        #endif
+        gl_FragColor.rgb=mix(neutral,gl_FragColor.rgb,textureOpacity*wrapOpacity)*light;
         #include <colorspace_fragment>
       }`,
   });
@@ -267,6 +286,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     uniforms.uvAvailable.value=hasModelUV;
     uniforms.boundsMin.value.set(box.min.x,box.min.y);
     uniforms.boundsSize.value.set(Math.max(size.x,1e-9),Math.max(size.y,1e-9));
+    uniforms.wrapCenterZ.value=(box.min.z+box.max.z)/2;
     const scale=2/Math.max(size.x,size.y,size.z);
     next.position.copy(center).multiplyScalar(-scale); next.scale.setScalar(scale);
     model=next; pivot.add(next);fit();
@@ -288,9 +308,12 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     },undefined,()=>{if(generation===sourceGeneration && !videoSourceActive && !videoSourceRequired)onError(new Error('Reference image could not be decoded.'));});
   }
   function updateMapping(project) {
-    const {grid,transform,mask}=project.placement;
+    const wrapping=project.placement.mappingMode==='wrap';
+    const {grid,transform}=wrapping?project.placement.wrap:project.placement;
+    const {mask}=project.placement;
     uniforms.useModelUV.value=project.placement.mappingMode==='uv';
     uniforms.useSurface.value=project.placement.mappingMode==='surface';
+    uniforms.useWrap.value=wrapping;
     uniforms.surfacePlaced.value=Boolean(project.placement.surface);
     if (model && modelBounds && project.placement.mappingMode !== 'uv') {
       const min=modelBounds.min,max=modelBounds.max;
@@ -321,6 +344,9 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   // Raycast returns coordinates in the same original-model XY domain as the shader.
   function domainOf(point) {
     const local=model.worldToLocal(point.clone());
+    if(snapshot?.project.placement.mappingMode==='wrap')return wrapDomain(local.toArray(),{
+      min:modelBounds.min.toArray(),max:modelBounds.max.toArray(),
+    });
     return {u:THREE.MathUtils.clamp((local.x-modelBounds.min.x)/uniforms.boundsSize.value.x,0,1),
       v:THREE.MathUtils.clamp(1-(local.y-modelBounds.min.y)/uniforms.boundsSize.value.y,0,1)};
   }
@@ -400,29 +426,43 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     return true;
   }
   function endPan() { panDepth=null; }
-  function projectDomain(point) {
+  function pointOnModelForDomain(point) {
     if(!model || !modelBounds) return null;
-    scene.updateMatrixWorld(true); camera.updateMatrixWorld(true);
-    const origin=new THREE.Vector3(modelBounds.min.x+point.u*uniforms.boundsSize.value.x,
-      modelBounds.min.y+(1-point.v)*uniforms.boundsSize.value.y,modelBounds.max.z+Math.max(1,modelBounds.max.z-modelBounds.min.z));
+    scene.updateMatrixWorld(true);
+    let origin,direction;
+    if(snapshot?.project.placement.mappingMode==='wrap'){
+      const theta=(point.u-0.5)*2*WRAP_HALF_ANGLE;
+      const radial=new THREE.Vector3(Math.sin(theta),0,Math.cos(theta));
+      const distance=Math.max(modelBounds.max.x-modelBounds.min.x,modelBounds.max.z-modelBounds.min.z,1)*2;
+      origin=new THREE.Vector3((modelBounds.min.x+modelBounds.max.x)/2,
+        modelBounds.max.y-point.v*(modelBounds.max.y-modelBounds.min.y),
+        (modelBounds.min.z+modelBounds.max.z)/2).addScaledVector(radial,distance);
+      direction=radial.negate();
+    }else{
+      origin=new THREE.Vector3(modelBounds.min.x+point.u*uniforms.boundsSize.value.x,
+        modelBounds.min.y+(1-point.v)*uniforms.boundsSize.value.y,modelBounds.max.z+Math.max(1,modelBounds.max.z-modelBounds.min.z));
+      direction=new THREE.Vector3(0,0,-1);
+    }
     model.localToWorld(origin);
-    const direction=new THREE.Vector3(0,0,-1).transformDirection(model.matrixWorld);
+    direction.transformDirection(model.matrixWorld);
     const hit=new THREE.Raycaster(origin,direction).intersectObject(model,true)[0];
-    if(!hit) return null;
-    const projected=hit.point.clone().project(camera);
+    return hit?.point??null;
+  }
+  function projectDomain(point) {
+    if(!point)return null;
+    updateCamera();camera.updateMatrixWorld(true);
+    const hit=pointOnModelForDomain(point);
+    if(!hit)return null;
+    const projected=hit.clone().project(camera);
     return {x:(projected.x+1)*canvas.clientWidth/2,y:(1-projected.y)*canvas.clientHeight/2};
   }
   function projectDomainNormalized(point) {
     if(!model || !modelBounds || !point || !Number.isFinite(point.u) || !Number.isFinite(point.v)
       || point.u<0 || point.u>1 || point.v<0 || point.v>1) return null;
-    updateCamera(); scene.updateMatrixWorld(true); camera.updateMatrixWorld(true);
-    const origin=new THREE.Vector3(modelBounds.min.x+point.u*uniforms.boundsSize.value.x,
-      modelBounds.min.y+(1-point.v)*uniforms.boundsSize.value.y,modelBounds.max.z+Math.max(1,modelBounds.max.z-modelBounds.min.z));
-    model.localToWorld(origin);
-    const direction=new THREE.Vector3(0,0,-1).transformDirection(model.matrixWorld);
-    const hit=new THREE.Raycaster(origin,direction).intersectObject(model,true)[0];
+    updateCamera();camera.updateMatrixWorld(true);
+    const hit=pointOnModelForDomain(point);
     if(!hit) return null;
-    const projected=hit.point.clone().project(camera);
+    const projected=hit.clone().project(camera);
     if(projected.z < -1 || projected.z > 1 || projected.x < -1 || projected.x > 1 || projected.y < -1 || projected.y > 1) return null;
     return {u:(projected.x+1)/2,v:(1-projected.y)/2};
   }
@@ -455,7 +495,7 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
   }
   function resize() {renderer.setSize(projection&&snapshot?snapshot.project.output.width:Math.max(1,canvas.clientWidth),projection&&snapshot?snapshot.project.output.height:Math.max(1,canvas.clientHeight),false);draw();}
   function fit(){camera.zoom=1;camera.position.set(0,0,3.5);camera.fov=45;controls.target.set(0,0,0);controls.update();draw();}
-  controls.addEventListener('change',draw);
+  controls.addEventListener('change',()=>{draw();onViewChange?.();});
   const observer=new ResizeObserver(resize);observer.observe(canvas);
   return {
     setSnapshot(value){snapshot=value;loadModel(value.project.mesh);updateSource(value.referencePreview);updateMapping(value.project);if(projection)resize();else draw();},
@@ -473,7 +513,13 @@ export function createScenePreview(canvas, onError, { projection = false } = {})
     clearVideoSource(){if(!videoSourceActive)return;videoSourceActive=false;applyImageSource();draw();},
     setMode(value){if(value===mode)return;mode=value;if(mode==='placement')fit();else draw();},
     setWireframe(value){wireframe=value;material.wireframe=wireframe;draw();},
-    setNavigation(value){navigation=value;controls.enabled=value&&mode==='placement';},
+    setNavigation(value, primaryOrbit=false){
+      navigation=value;
+      controls.enabled=value&&mode==='placement';
+      controls.mouseButtons.LEFT=primaryOrbit?THREE.MOUSE.ROTATE:null;
+      controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;
+      controls.touches.ONE=primaryOrbit?THREE.TOUCH.ROTATE:null;
+    },
     setCalibrationEditing(value){calibrationEditing=Boolean(value);draw();},
     pick, pickSurface, projectSurfacePosition, projectDomain, projectDomainNormalized, zoomAt, beginPan, panBy, endPan,
     hasUV(){return hasModelUV;},

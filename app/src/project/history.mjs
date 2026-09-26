@@ -53,29 +53,33 @@ function commit(history, project, nowISO, past, future) {
 function applyCommand(project, command) {
   const projectorBefore = structuredClone(project.projector);
   const outputBefore = { width: project.output.width, height: project.output.height };
+  const activePlacement = project.placement.mappingMode === 'wrap' ? project.placement.wrap : project.placement;
   switch (command.type) {
     case 'placement-transform':
-      project.placement.transform = command.value;
+      activePlacement.transform = command.value;
       break;
     case 'grid-point':
-      project.placement.grid = moveGridPoint(project.placement.grid, command.index, command.point);
+      activePlacement.grid = moveGridPoint(activePlacement.grid, command.index, command.point);
       break;
     case 'mask':
       project.placement.mask = command.value;
       break;
     case 'alignment-pairs':
-      project.placement.alignment = { pairs: command.value };
+      activePlacement.alignment = { pairs: command.value };
       break;
     case 'alignment-apply': {
-      if (project.placement.mappingMode !== 'front') throw new RangeError('Alignment can only be applied in front mapping mode');
+      if (!['front', 'wrap'].includes(project.placement.mappingMode)) throw new RangeError('Alignment requires front mapping mode or wrap mapping mode');
       const grid = fitLandmarkGrid(command.value);
-      project.placement.alignment = { pairs: command.value };
-      project.placement.grid = grid;
-      project.placement.transform = { x: 0, y: 0, scale: 1, rotation: 0 };
+      activePlacement.alignment = { pairs: command.value };
+      activePlacement.grid = grid;
+      activePlacement.transform = { x: 0, y: 0, scale: 1, rotation: 0 };
       break;
     }
     case 'mapping-mode':
       project.placement.mappingMode = command.value;
+      if (command.value === 'wrap' && !project.placement.wrap) {
+        project.placement.wrap = createProject({ id: project.id, name: project.name, now: project.createdAt }).placement.wrap;
+      }
       break;
     case 'surface-placement':
       project.placement.surface = command.value;
@@ -101,6 +105,7 @@ function applyCommand(project, command) {
     case 'reference':
       project.reference = command.value;
       if (project.placement.alignment) project.placement.alignment = { pairs: [] };
+      if (project.placement.wrap) project.placement.wrap.alignment = { pairs: [] };
       break;
     case 'output':
       project.output = command.value;
@@ -217,8 +222,8 @@ function validateCommand(command) {
   if (typeDescriptor.value === 'calibration-pairs' || typeDescriptor.value === 'calibration-apply' || typeDescriptor.value === 'calibration-reseed') {
     validateLandmarkPairs(readDataProperty(command, 'value'), typeDescriptor.value === 'calibration-apply' ? 3 : 0);
   }
-  if (typeDescriptor.value === 'mapping-mode' && !['front', 'uv', 'surface'].includes(readDataProperty(command, 'value'))) {
-    throw new RangeError('Mapping mode must be front, uv, or surface');
+  if (typeDescriptor.value === 'mapping-mode' && !['front', 'uv', 'surface', 'wrap'].includes(readDataProperty(command, 'value'))) {
+    throw new RangeError('Mapping mode must be front, uv, surface, or wrap');
   }
   if (typeDescriptor.value === 'surface-placement' && !isSurfacePlacement(readDataProperty(command, 'value'))) {
     throw new RangeError('Surface placement is invalid');

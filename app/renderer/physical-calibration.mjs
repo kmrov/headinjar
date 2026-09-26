@@ -36,7 +36,10 @@ export function createPhysicalCalibration(parent, { onEdit, onState, onMarker, g
     if (selected !== null && !current[selected]) selected = current.length ? current.length - 1 : null;
     const hasMesh = Boolean(snapshot?.project.mesh);
     q('#physical-add').disabled = !hasMesh || current.length >= 12 || pending;
-    q('#physical-reseed').disabled = !hasMesh || !(snapshot?.project.placement.alignment?.pairs?.length) || pending;
+    const placement = snapshot?.project.placement;
+    const landmarkCount = placement?.mappingMode === 'wrap'
+      ? placement.wrap?.alignment.pairs.length : placement?.alignment?.pairs?.length;
+    q('#physical-reseed').disabled = !hasMesh || !landmarkCount || pending;
     q('#physical-apply').disabled = current.length < 3 || pending;
     q('#physical-status').textContent = picking
       ? 'Click a new point on the model in the preview.'

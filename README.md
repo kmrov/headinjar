@@ -58,7 +58,7 @@ Start with the [illustrated beginner tutorial](docs/tutorial.md). Its screenshot
 ## Your first projection 🎯
 
 1. **Import a model and image.** Load an OBJ and a reference image in the editor.
-2. **Place the texture.** Use Front mapping for an image on the OBJ's +Z side. Adjust **Image position**, or open **Front → Align** and pair at least three non-collinear image and model landmarks. The texture fits automatically as valid pairs are added. To place one image on another side, choose **Surface**, orbit with **Move**, then click or drag the model with **Place image**.
+2. **Place the texture.** Use Front mapping for an image on the OBJ's +Z side. Adjust **Image position**, or open **Align** and pair at least three non-collinear image and model landmarks. The texture fits automatically as valid pairs are added. To drag an image around the face and sides without model UVs, choose **Wrap**, use **Place image**, and refine it with **Align**. To place one image on another side, choose **Surface**, right-drag to orbit the model, then click or drag it with **Place image**.
 3. **Refine coverage.** Use Mask to limit coverage. Double-click to finish a mask contour.
 4. **Choose an output display.** Click **Choose display** in the bottom bar, select the projector, then click **Start projection**. Output opens black until explicitly started.
 5. **Match the physical object.** Open **Projector calibration** and drag its model points until their projected marks match the real surface, then click **Apply**.
@@ -71,10 +71,11 @@ For precise landmark placement in **Front → Align**, zoom the source image and
 | Mode | Use it for |
 | --- | --- |
 | **Front** | A front-facing image fitted with transforms, a control grid, masks, and landmarks. The image extends around the main connected surface, including its sides and underside. |
-| **Surface** | One image or live video placed by clicking or dragging any visible model side. Use Move to orbit, then Place image to position it; scale and rotation are in the Surface inspector. |
+| **Wrap** | A regular image dragged across the front and sides of a head. Scale, rotation, and image/model landmarks are saved separately from Front; the back stays neutral. No authored UV atlas is needed. |
+| **Surface** | One image or live video placed by clicking or dragging any visible model side. Right-drag to orbit while Place image stays active; scale and rotation are in the Surface inspector. |
 | **Model UV** | A texture atlas authored for the OBJ's original UV coordinates. Front placement controls do not apply in this mode. |
 
-Front starts on the OBJ's original +Z side; the editor camera starts there, and orbiting it does not change the mapping direction. The same image coordinates stretch across connected sides and undersides, so those areas show an approximation of the front image rather than their real appearance. Separate inner mesh layers remain occluded. Surface follows the selected local face and clips at sharp corners. It places a single planar image, not a whole-model texture atlas. If an OBJ has UV coordinates, a random photo still will not match its texture atlas.
+Front starts on the OBJ's original +Z side; the editor camera starts there, and orbiting it does not change the mapping direction. The same image coordinates stretch across connected sides and undersides, so those areas show an approximation of the front image rather than their real appearance. Wrap uses a head-oriented curved mapping around the original vertical axis. In **Place image**, left-drag to move the image, use **Rotation** to turn it, and right-drag to orbit the model. **Align** adds points on either the front or a visible side. Wrap fades near the back edge, and its settings do not replace Front alignment. A front-only photo still lacks real profile detail and may stretch along the sides. Surface follows the selected local face and clips at sharp corners. It places a single planar image, not a whole-model texture atlas. If an OBJ has UV coordinates, a random photo still will not match its texture atlas.
 
 ### Physical landmark alignment
 

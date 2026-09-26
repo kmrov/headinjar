@@ -53,6 +53,7 @@ try {
   await editor.waitForFunction(async () => Boolean((await window.desktop.getSnapshot()).referencePreview));
   await editor.locator('#mapping-mode').selectOption('surface');
   await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).project.placement.mappingMode === 'surface');
+  assert.equal(await editor.locator('[data-tool="move"]').count(), 0, 'navigation has no separate Move tool');
   assert.equal(await editor.locator('[data-tool="place"]').getAttribute('aria-pressed'), 'true');
   const box = await editor.locator('#viewport').boundingBox();
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -60,12 +61,13 @@ try {
   await editor.waitForFunction(async () => Boolean((await window.desktop.getSnapshot()).project.placement.surface));
   let snapshot = await invoke('getSnapshot');
   assert.ok(snapshot.project.placement.surface.normal[2] > 0.9, 'initial visible face is +Z');
-  await editor.locator('[data-tool="move"]').click();
+  const beforeOrbit = snapshot.project.revision;
   await editor.mouse.move(center.x, center.y);
-  await editor.mouse.down();
+  await editor.mouse.down({ button: 'right' });
   await editor.mouse.move(center.x - box.height / 4, center.y, { steps: 12 });
-  await editor.mouse.up();
-  await editor.locator('[data-tool="place"]').click();
+  await editor.mouse.up({ button: 'right' });
+  assert.equal((await invoke('getSnapshot')).project.revision, beforeOrbit, 'right-dragging the view does not edit image placement');
+  assert.equal(await editor.locator('[data-tool="place"]').getAttribute('aria-pressed'), 'true', 'Place image stays active while orbiting');
   await editor.mouse.click(center.x, center.y);
   await editor.waitForFunction(async () => (await window.desktop.getSnapshot()).project.placement.surface?.normal[0] > 0.7);
   snapshot = await invoke('getSnapshot');
@@ -97,7 +99,7 @@ try {
   await editor.mouse.click(box.x+5,box.y+5);
   assert.equal((await invoke('getSnapshot')).project.revision,revisionAfterRedo,'clicking empty space does not edit placement');
   await editor.evaluate(()=>{
-    document.querySelector('#viewport canvas:last-of-type').addEventListener('pointerdown',event=>{
+    document.querySelector('#viewport canvas:first-of-type').addEventListener('pointerdown',event=>{
       window.__surfaceTestPointerId=event.pointerId;
     },{once:true});
   });
@@ -105,14 +107,14 @@ try {
   await editor.mouse.down();
   await editor.mouse.move(center.x+20,center.y+10,{steps:4});
   await editor.evaluate(()=>{
-    document.querySelector('#viewport canvas:last-of-type').dispatchEvent(new PointerEvent('pointercancel',{
+    document.querySelector('#viewport canvas:first-of-type').dispatchEvent(new PointerEvent('pointercancel',{
       bubbles:true,pointerId:window.__surfaceTestPointerId,
     }));
   });
   const retainedCapture=await editor.evaluate(()=>{
-    const overlay=document.querySelector('#viewport canvas:last-of-type');
-    const retained=overlay.hasPointerCapture(window.__surfaceTestPointerId);
-    if(retained)overlay.releasePointerCapture(window.__surfaceTestPointerId);
+    const canvas=document.querySelector('#viewport canvas:first-of-type');
+    const retained=canvas.hasPointerCapture(window.__surfaceTestPointerId);
+    if(retained)canvas.releasePointerCapture(window.__surfaceTestPointerId);
     return retained;
   });
   await editor.mouse.up();

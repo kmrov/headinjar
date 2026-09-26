@@ -102,12 +102,11 @@
           <div class="canvas-toolbar">
             <div class="canvas-heading"><button class="panel-toggle" id="show-sources" type="button" aria-controls="sources-panel" aria-expanded="false" aria-label="Show sources panel" title="Show sources panel" hidden><i class="ph ph-sidebar-simple" aria-hidden="true"></i></button><h1 id="canvas-title">Model preview</h1><span class="scene-badge" id="canvas-badge">Placement</span></div>
             <div class="tool-switch" role="toolbar" aria-label="Placement tools">
-              <button class="tool-button is-selected" type="button" data-tool="move" aria-pressed="true"><i class="ph ph-arrows-out-cardinal" aria-hidden="true"></i><span>Move</span></button>
               <button class="tool-button" type="button" data-tool="place" aria-pressed="false" hidden><i class="ph ph-hand-pointing" aria-hidden="true"></i><span>Place image</span></button>
               <button class="tool-button" type="button" data-tool="mask" aria-pressed="false"><i class="ph ph-circle-dashed" aria-hidden="true"></i><span>Mask</span></button>
               <button class="tool-button" type="button" data-tool="align" aria-pressed="false"><i class="ph ph-crosshair" aria-hidden="true"></i><span>Align</span></button>
             </div>
-            <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="surface">Surface</option><option value="uv">Model UV</option></select></label>
+            <label class="mapping-mode-control" for="mapping-mode">Mapping <select id="mapping-mode"><option value="front">Front</option><option value="wrap">Wrap</option><option value="surface">Surface</option><option value="uv">Model UV</option></select></label>
           </div>
           <div class="alignment-workspace">
             <section class="alignment-source-panel" id="alignment-source-panel" aria-label="Alignment source image" hidden>
@@ -135,7 +134,8 @@
           <div class="inspector-scroll">
             <p id="mapping-uv-note" class="section-note mapping-uv-note" hidden>Model UV requires a texture made for this OBJ’s UV layout. For an ordinary image, choose Front and Align.</p>
             <p id="mapping-front-note" class="section-note mapping-uv-note">Front starts on the OBJ +Z side and stretches the image around the connected model surface. Orbiting the view does not change it; choose Surface to aim the image at another side.</p>
-            <p id="mapping-surface-note" class="section-note mapping-uv-note" hidden>Place one image on any visible side. Choose Place image and drag on the model. Use Move to orbit.</p>
+            <p id="mapping-wrap-note" class="section-note mapping-uv-note" hidden>Wrap follows the face and sides without model UVs. Drag with Place image to move it, use Rotation to turn it, then Align to match points. Right-drag to orbit the view. The back stays untextured.</p>
+            <p id="mapping-surface-note" class="section-note mapping-uv-note" hidden>Place one image on any visible side. Drag on the model to place it; right-drag to orbit the view.</p>
             <section class="inspector-section placement-panel" id="placement-panel">
               <div class="inspector-title-row"><h2>Image position</h2><span class="section-index">01</span></div>
               <div class="field-row coordinate-row">

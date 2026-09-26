@@ -100,7 +100,7 @@ function validateData(value) {
     string(value.reference.path, 'reference.path', 4096);
   }
 
-  optionalObject(value.placement, ['grid', 'transform', 'mask'], ['alignment', 'mappingMode', 'surface'], 'placement');
+  optionalObject(value.placement, ['grid', 'transform', 'mask'], ['alignment', 'mappingMode', 'surface', 'wrap'], 'placement');
   object(value.placement.grid, ['columns', 'rows', 'points'], 'placement.grid');
   dataArray(value.placement.grid.points, 'placement.grid.points');
   for (const point of value.placement.grid.points) object(point, ['u', 'v'], 'grid point');
@@ -138,10 +138,36 @@ function validateData(value) {
       }
     }
   }
-  if (Object.hasOwn(value.placement, 'mappingMode') && !['front', 'uv', 'surface'].includes(value.placement.mappingMode)) {
-    fail('placement.mappingMode must be front, uv, or surface');
+  if (Object.hasOwn(value.placement, 'mappingMode') && !['front', 'uv', 'surface', 'wrap'].includes(value.placement.mappingMode)) {
+    fail('placement.mappingMode must be front, uv, surface, or wrap');
   }
   if (Object.hasOwn(value.placement, 'surface') && !isSurfacePlacement(value.placement.surface)) fail('placement.surface is invalid');
+  if (Object.hasOwn(value.placement, 'wrap')) {
+    const wrap = value.placement.wrap;
+    object(wrap, ['grid', 'transform', 'alignment'], 'placement.wrap');
+    object(wrap.grid, ['columns', 'rows', 'points'], 'placement.wrap.grid');
+    dataArray(wrap.grid.points, 'placement.wrap.grid.points');
+    for (const point of wrap.grid.points) object(point, ['u', 'v'], 'wrap grid point');
+    const wrapGridResult = validateGrid(wrap.grid);
+    if (!wrapGridResult.valid) fail(`invalid wrap grid: ${wrapGridResult.reason}`);
+    object(wrap.transform, ['x', 'y', 'scale', 'rotation'], 'placement.wrap.transform');
+    for (const key of ['x', 'y', 'rotation']) finite(wrap.transform[key], `placement.wrap.transform.${key}`);
+    finite(wrap.transform.scale, 'placement.wrap.transform.scale');
+    if (wrap.transform.scale <= 0) fail('wrap scale must be positive');
+    object(wrap.alignment, ['pairs'], 'placement.wrap.alignment');
+    dataArray(wrap.alignment.pairs, 'placement.wrap.alignment.pairs');
+    if (wrap.alignment.pairs.length > 12) fail('placement.wrap.alignment.pairs may contain at most 12 landmarks');
+    for (const pair of wrap.alignment.pairs) {
+      object(pair, ['source', 'target'], 'wrap alignment pair');
+      for (const key of ['source', 'target']) {
+        object(pair[key], ['u', 'v'], `wrap alignment ${key}`);
+        for (const axis of ['u', 'v']) {
+          finite(pair[key][axis], `wrap alignment ${key}.${axis}`);
+          if (pair[key][axis] < 0 || pair[key][axis] > 1) fail(`wrap alignment ${key}.${axis} must be inside [0, 1]`);
+        }
+      }
+    }
+  } else if (value.placement.mappingMode === 'wrap') fail('wrap mapping requires placement.wrap');
 
   optionalObject(value.projector, ['position', 'rotation', 'fov', 'offset', 'model'], ['calibration'], 'projector');
   vector(value.projector.position, 3, 'projector.position');
@@ -211,6 +237,14 @@ function detached(value) {
         position: [...value.placement.surface.position], normal: [...value.placement.surface.normal], up: [...value.placement.surface.up],
         scale: value.placement.surface.scale, rotation: value.placement.surface.rotation,
       } } : {}),
+      ...(Object.hasOwn(value.placement, 'wrap') ? { wrap: {
+        grid: { columns: value.placement.wrap.grid.columns, rows: value.placement.wrap.grid.rows,
+          points: value.placement.wrap.grid.points.map(({ u, v }) => ({ u, v })) },
+        transform: { ...value.placement.wrap.transform },
+        alignment: { pairs: value.placement.wrap.alignment.pairs.map(({ source, target }) => ({
+          source: { u: source.u, v: source.v }, target: { u: target.u, v: target.v },
+        })) },
+      } } : {}),
     },
     projector: {
       position: [...value.projector.position], rotation: [...value.projector.rotation], fov: value.projector.fov,
@@ -231,7 +265,8 @@ export function createProject({ id, name, now }) {
   const project = {
     version: 1, id, name, revision: 0, createdAt: now, updatedAt: now,
     mesh: null, reference: null,
-    placement: { grid: createGrid(5, 5), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, mask: [], alignment: { pairs: [] }, mappingMode: 'front', surface: null },
+    placement: { grid: createGrid(5, 5), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, mask: [], alignment: { pairs: [] }, mappingMode: 'front', surface: null,
+      wrap: { grid: createGrid(5, 5), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, alignment: { pairs: [] } } },
     projector: { position: [0, 0, 3], rotation: [0, 0, 0], fov: 45, offset: [0, 0], model: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 1 }, calibration: { pairs: [], grid: createGrid(2, 2) } },
     output: { width: 1920, height: 1080, displayId: null }, source: null,
   };
