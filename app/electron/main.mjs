@@ -2,9 +2,11 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session } from 
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { createOutputState, getOutputMode, transitionOutput } from '../src/output/state.mjs';
 import { createProject } from '../src/project/model.mjs';
 import { createProjectController } from './project-controller.mjs';
+import { createDialogDirectoryStore } from './dialog-directory.mjs';
 import { outputForDisplay, physicalDisplaySize, readXrandrDisplays, validateDisplaySelection } from './display-resolution.mjs';
 import { getProjectOutputImpact, isTrustedEditorSender, isValidDisplayId, isValidOutputAction, isValidProjectEditCommand, validateProjectName } from './ipc-policy.mjs';
 import { createWebRTCSessionController } from './webrtc-session.mjs';
@@ -415,6 +417,7 @@ app.whenReady().then(() => {
   projectController = createProjectController({
     initialProject,
     dialog,
+    dialogDirectory: createDialogDirectoryStore(join(app.getPath('userData'), 'file-dialog.json'), [app.getPath('documents'), app.getPath('home')]),
     getOwnerWindow: () => editorWindow,
     onChange: (next, event) => {
       const impact = getProjectOutputImpact(lastControllerProject, next.project, event.reason);

@@ -59,6 +59,49 @@ test('cancels a pending save dialog when the active project is replaced', async 
   assert.equal(controller.snapshot().project.name, 'Replacement');
 });
 
+test('file dialogs share the last selected directory and keep it after cancellation', async () => {
+  let directory = '/tmp/Documents';
+  const seen = [];
+  let cancelNext = false;
+  const { controller } = dependencies({
+    dialog: {
+      showOpenDialog: async (_window, options) => {
+        seen.push([options.title, options.defaultPath]);
+        if (cancelNext) return { canceled: true, filePaths: [] };
+        if (options.title === 'Import head mesh') return { canceled: false, filePaths: ['/tmp/Models/head.obj'] };
+        if (options.title === 'Choose reference image') return { canceled: false, filePaths: ['/tmp/Images/face.png'] };
+        return { canceled: false, filePaths: ['/tmp/Projects/main.mapping.json'] };
+      },
+      showSaveDialog: async (_window, options) => {
+        seen.push([options.title, options.defaultPath]);
+        return { canceled: false, filePath: '/tmp/Exports/copy.mapping.json' };
+      },
+    },
+    options: {
+      dialogDirectory: { get: () => directory, set: (value) => { directory = value; } },
+      readFile: async (path) => path.endsWith('.obj')
+        ? Buffer.from('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')
+        : Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    },
+  });
+
+  await controller.importMesh();
+  await controller.importReference();
+  await controller.saveProject();
+  await controller.openProject();
+  cancelNext = true;
+  await controller.importMesh();
+
+  assert.deepEqual(seen, [
+    ['Import head mesh', '/tmp/Documents'],
+    ['Choose reference image', '/tmp/Models'],
+    ['Save project', '/tmp/Images/Head.mapping.json'],
+    ['Open project', '/tmp/Exports'],
+    ['Import head mesh', '/tmp/Projects'],
+  ]);
+  assert.equal(directory, '/tmp/Projects');
+});
+
 test('rejects renderer commands for imported mesh and reference', () => {
   const { controller } = dependencies();
   assert.throws(() => controller.editProject({ type: 'mesh', value: { name: 'x.obj', obj: 'v 0 0 0\nf 1 1 1' } }), RangeError);

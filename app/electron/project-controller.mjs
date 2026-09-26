@@ -1,5 +1,5 @@
 import { readFile as defaultReadFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createHistory, editHistory, redoHistory, undoHistory } from '../src/project/history.mjs';
 import { saveProject as defaultSave, loadProject as defaultLoad, loadNewerRecovery as defaultRecovery, writeRecovery as defaultWriteRecovery } from '../src/project/storage.mjs';
 import { isValidProjectEditCommand } from './ipc-policy.mjs';
@@ -14,6 +14,7 @@ export function createProjectController({
   getOwnerWindow = () => undefined,
   readFile = defaultReadFile,
   storage = {},
+  dialogDirectory = { get: () => null, set: () => {} },
   now = () => new Date().toISOString(),
   onChange = () => {},
 }) {
@@ -39,6 +40,11 @@ export function createProjectController({
   let saveRequest = 0;
   let referenceRequest = 0;
   let writeTail = Promise.resolve();
+  const rememberSelectedPath = (path) => dialogDirectory.set(dirname(path));
+  const openDialogPath = () => {
+    const directory = dialogDirectory.get();
+    return directory ? { defaultPath: directory } : {};
+  };
 
   const currentProject = () => history.project;
   const snapshot = () => ({
@@ -155,10 +161,12 @@ export function createProjectController({
     const request = ++openRequest;
     const selected = await dialog.showOpenDialog(getOwnerWindow(), {
       title: 'Open project', properties: ['openFile'],
+      ...openDialogPath(),
       filters: [{ name: 'Head in Jar project', extensions: ['json'] }],
     });
     if (request !== openRequest || token !== generation || selected.canceled || !selected.filePaths?.[0]) return { canceled: true };
     const selectedPath = selected.filePaths[0];
+    rememberSelectedPath(selectedPath);
     const loaded = await io.loadProject(selectedPath);
     const recovery = await io.loadNewerRecovery(selectedPath, loaded);
     let chosen = loaded;
@@ -182,11 +190,12 @@ export function createProjectController({
     const token = generation;
     const request = ++saveRequest;
     const selected = await dialog.showSaveDialog(getOwnerWindow(), {
-      title: 'Save project', defaultPath: `${currentProject().name}.mapping.json`,
+      title: 'Save project', defaultPath: join(dialogDirectory.get() ?? '', `${currentProject().name}.mapping.json`),
       filters: [{ name: 'Head in Jar project', extensions: ['json'] }],
     });
     if (request !== saveRequest || token !== generation || selected.canceled || !selected.filePath) return { canceled: true };
     const path = selected.filePath;
+    rememberSelectedPath(path);
     if (recoveryEligiblePath !== path) {
       const offeredRevision = currentProject().revision;
       const recovery = await io.loadNewerRecovery(path, currentProject());
@@ -231,10 +240,12 @@ export function createProjectController({
     const token = generation;
     const selected = await dialog.showOpenDialog(getOwnerWindow(), {
       title: 'Import head mesh', properties: ['openFile'],
+      ...openDialogPath(),
       filters: [{ name: 'Wavefront OBJ', extensions: ['obj'] }],
     });
     if (token !== generation || selected.canceled || !selected.filePaths?.[0]) return { canceled: true };
     const path = selected.filePaths[0];
+    rememberSelectedPath(path);
     const bytes = await readFile(path);
     if (token !== generation) return { canceled: true };
     if (bytes.byteLength > MAX_OBJ_BYTES) throw new RangeError('OBJ file must be at most 32 MiB');
@@ -255,10 +266,12 @@ export function createProjectController({
     const token = generation;
     const selected = await dialog.showOpenDialog(getOwnerWindow(), {
       title: 'Choose reference image', properties: ['openFile'],
+      ...openDialogPath(),
       filters: [{ name: 'Reference image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
     });
     if (token !== generation || selected.canceled || !selected.filePaths?.[0]) return { canceled: true };
     const path = selected.filePaths[0];
+    rememberSelectedPath(path);
     const bytes = await readFile(path);
     if (token !== generation) return { canceled: true };
     if (bytes.byteLength > MAX_REFERENCE_BYTES) throw new RangeError('Reference image must be at most 16 MiB');
