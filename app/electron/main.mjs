@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createOutputState, getOutputMode, transitionOutput } from '../src/output/state.mjs';
 import { createProject } from '../src/project/model.mjs';
 import { createProjectController } from './project-controller.mjs';
+import { outputForDisplay, physicalDisplaySize, readXrandrDisplays, validateDisplaySelection } from './display-resolution.mjs';
 import { getProjectOutputImpact, isTrustedEditorSender, isValidDisplayId, isValidOutputAction, isValidProjectEditCommand, validateProjectName } from './ipc-policy.mjs';
 import { createWebRTCSessionController } from './webrtc-session.mjs';
 import { createSignalingOfferGate } from './signaling-integration.mjs';
@@ -290,18 +291,24 @@ function registerIpc() {
     return true;
   });
   editorHandler('shell:calibration-marker', value => { setCalibrationMarker(value); });
-  editorHandler('shell:list-displays', () => screen.getAllDisplays().map((display) => ({
-    id: String(display.id), bounds: { ...display.bounds }, scaleFactor: display.scaleFactor,
-    primary: display.id === screen.getPrimaryDisplay().id,
-  })));
-  editorHandler('shell:open-output', async (displayId) => {
+  editorHandler('shell:list-displays', async () => {
+    const xrandrDisplays = await readXrandrDisplays();
+    return screen.getAllDisplays().map((display) => ({
+      id: String(display.id), bounds: { ...display.bounds }, scaleFactor: display.scaleFactor,
+      physicalSize: physicalDisplaySize(display, xrandrDisplays), primary: display.id === screen.getPrimaryDisplay().id,
+    }));
+  });
+  editorHandler('shell:open-output', async (displayId, expectedSize) => {
+    const xrandrDisplays = await readXrandrDisplays();
     const displays = screen.getAllDisplays();
     if (!isValidDisplayId(displayId, displays)) throw new RangeError('Choose a connected display');
     const display = displays.find((item) => String(item.id) === displayId);
+    if (expectedSize !== undefined) validateDisplaySelection(display, expectedSize, xrandrDisplays);
     const output = projectController.snapshot().project.output;
-    if (output.displayId !== displayId) {
+    const nextOutput = outputForDisplay(output, display, xrandrDisplays);
+    if (output.displayId !== nextOutput.displayId || output.width !== nextOutput.width || output.height !== nextOutput.height) {
       projectController.editProject({
-        type: 'output', value: { ...output, displayId },
+        type: 'output', value: nextOutput,
       });
     }
     clearOutput();

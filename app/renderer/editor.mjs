@@ -30,7 +30,7 @@ const ui = {
   surfaceScale: $('#surface-scale'), surfaceRotation: $('#surface-rotation'), surfaceStatus: $('#surface-status'), resetSurface: $('#reset-surface'),
   maskCount: $('#mask-count'), maskNote: $('#mask-note'), maskMode: $('#mask-mode'), clearMask: $('#clear-mask'),
   hold: $('#hold-output'), projectionToggle: $('#projection-toggle'), changeDisplay: $('#change-display'),
-  displayDialog: $('#display-dialog'), displayList: $('#display-list'), confirmDisplay: $('#confirm-display'),
+  displayDialog: $('#display-dialog'), displayList: $('#display-list'), displayResolutionNote: $('#display-resolution-note'), confirmDisplay: $('#confirm-display'),
   viewport: $('#viewport'),
   webrtcPreviewCanvas: $('#webrtc-preview-canvas'), webrtcPreviewEmpty: $('#webrtc-preview-empty'),
   webrtcPreviewFreeze: $('#webrtc-preview-freeze'), webrtcPreviewStatus: $('#webrtc-preview-status'),
@@ -539,7 +539,8 @@ async function openDisplayDialog() {
     const result = await callDesktop('listDisplays');
     if (!Array.isArray(result) || result.length === 0) throw new Error('No connected displays were found.');
     displays = result;
-    selectedDisplayId = String(snapshot?.displayId || snapshot?.project?.output?.displayId || result[0].id);
+    const preferredId = String(snapshot?.displayId || snapshot?.project?.output?.displayId || '');
+    selectedDisplayId = result.some((display) => String(display.id) === preferredId) ? preferredId : String(result[0].id);
     renderDisplayChoices();
     ui.displayDialog.showModal();
   });
@@ -554,13 +555,22 @@ function renderDisplayChoices() {
     button.className = 'display-choice';
     button.setAttribute('role', 'radio');
     button.setAttribute('aria-checked', String(id === selectedDisplayId));
-    button.innerHTML = `<span class="display-choice-icon"><i class="ph ph-monitor" aria-hidden="true"></i></span><span class="display-choice-copy"><strong>Display ${index + 1}${display.primary ? ' · Primary' : ''}</strong><small>Desktop: ${display.bounds.width} × ${display.bounds.height} logical · Render: ${snapshot.project.output.width} × ${snapshot.project.output.height} px</small></span><span class="radio-mark" aria-hidden="true"></span>`;
+    button.innerHTML = `<span class="display-choice-icon"><i class="ph ph-monitor" aria-hidden="true"></i></span><span class="display-choice-copy"><strong>Display ${index + 1}${display.primary ? ' · Primary' : ''}</strong><small>Screen: ${display.physicalSize.width} × ${display.physicalSize.height} px · Desktop: ${display.bounds.width} × ${display.bounds.height} logical</small></span><span class="radio-mark" aria-hidden="true"></span>`;
     button.addEventListener('click', () => {
       selectedDisplayId = id;
       renderDisplayChoices();
     });
     ui.displayList.append(button);
   }
+  const selected = displays.find((display) => String(display.id) === selectedDisplayId);
+  const current = snapshot?.project?.output;
+  if (selected && current) {
+    const next = selected.physicalSize;
+    const changed = current.width !== next.width || current.height !== next.height;
+    ui.displayResolutionNote.textContent = changed
+      ? `Render will change from ${current.width} × ${current.height} to ${next.width} × ${next.height} px. Projector calibration will reset; check alignment before starting. Higher resolution may reduce frame rate.`
+      : `Render: ${next.width} × ${next.height} px, matching this screen.`;
+  } else ui.displayResolutionNote.textContent = '';
   ui.confirmDisplay.disabled = !selectedDisplayId;
 }
 
@@ -569,7 +579,8 @@ async function confirmDisplay() {
   if (!displayId) return;
   ui.confirmDisplay.disabled = true;
   await safely(async () => {
-    await callDesktop('openOutput', displayId);
+    const selected = displays.find((display) => String(display.id) === displayId);
+    await callDesktop('openOutput', displayId, selected.physicalSize);
     ui.displayDialog.close();
     showFeedback('Output opened black. Click Start projection when ready.');
   });

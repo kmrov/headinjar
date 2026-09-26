@@ -322,6 +322,7 @@ body.is-resizing-panels { user-select: none; cursor: col-resize; }
 .display-choice-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 3px; }
 .display-choice-copy strong { font-size: 11px; font-weight: 500; }
 .display-choice-copy small { color: #8c9892; font-size: 10px; }
+.display-resolution-note { margin: 12px 0 0; color: #b6c3bb; font-size: 11px; line-height: 1.5; }
 .radio-mark { display: grid; width: 16px; height: 16px; place-items: center; border: 1px solid #65706a; border-radius: 50%; }
 .display-choice[aria-checked="true"] .radio-mark { border-color: var(--mint); }
 .display-choice[aria-checked="true"] .radio-mark::after { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); content: ""; }

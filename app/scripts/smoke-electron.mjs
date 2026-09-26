@@ -193,7 +193,18 @@ try {
   const displays = await invoke('listDisplays');
   assert.ok(displays.length > 0, 'headless display available');
   await assert.rejects(invoke('openOutput', 'missing-display'));
-  await invoke('openOutput', displays[0].id);
+  await editor.locator('#projection-toggle').click();
+  const displayChoice = editor.locator('.display-choice').first();
+  assert.match(await displayChoice.innerText(), new RegExp(`${displays[0].physicalSize.width}\\s*×\\s*${displays[0].physicalSize.height}`));
+  await displayChoice.click();
+  await editor.locator('#confirm-display').click();
+  await editor.waitForFunction(async ({ id, width, height }) => {
+    const state = await window.desktop.getSnapshot();
+    return state.displayId === id && state.project.output.width === width && state.project.output.height === height;
+  }, { id: displays[0].id, ...displays[0].physicalSize });
+  const selectedOutput = (await invoke('getSnapshot')).project.output;
+  assert.deepEqual({ width: selectedOutput.width, height: selectedOutput.height }, displays[0].physicalSize,
+    'output render size matches selected screen pixels');
   const output = application.windows().find((page) => page !== editor);
   assert.ok(output, 'dedicated output window');
   await output.waitForLoadState();

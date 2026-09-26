@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   copyWhipUrl: () => ipcRenderer.invoke('shell:whip-copy-url'),
   copyWhipToken: () => ipcRenderer.invoke('shell:whip-copy-token'),
   listDisplays: () => ipcRenderer.invoke('shell:list-displays'),
-  openOutput: (displayId) => ipcRenderer.invoke('shell:open-output', displayId),
+  openOutput: (displayId, expectedSize) => ipcRenderer.invoke('shell:open-output', displayId, expectedSize),
   outputAction: (event) => ipcRenderer.invoke('shell:output-action', event),
   setCalibrationMarker: (value) => ipcRenderer.invoke('shell:calibration-marker', value),
   editProject: (command) => ipcRenderer.invoke('shell:edit-project', command),

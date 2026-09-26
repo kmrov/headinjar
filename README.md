@@ -108,7 +108,7 @@ Live input does not turn on the projector. Select a display and click **Start pr
 | **Start projection** / **Stop projection** | Start live rendering or return to black. |
 | **Hold** | Freeze the current output frame. |
 
-On Linux, the launcher selects X11/XWayland so the output window can be positioned on the selected monitor. Desktop dimensions are logical display dimensions; Render dimensions are the project's frame buffer size. OS scaling can affect physical pixel correspondence.
+On Linux, the launcher selects X11/XWayland so the output window can be positioned on the selected monitor. The display chooser shows physical screen pixels separately from logical desktop dimensions. Selecting a display automatically sets the project's render resolution to that screen's physical resolution. If the resolution changes, projector calibration resets and must be checked before projection; higher resolutions may reduce frame rate. XRandR supplies exact pixel dimensions on Linux when available; without it, the app estimates them from Electron's logical bounds and scale factor, which can be off by a pixel under fractional scaling.
 
 ## Project files
 
