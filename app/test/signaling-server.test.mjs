@@ -78,6 +78,38 @@ test('rejects untrusted host and origin, and requires the per-run bearer for off
   });
 });
 
+test('explicit local access accepts tokenless native offers only from its subnet', async () => {
+  await withServer({ localSubnet: { address: '127.0.0.1', prefixLength: 8 },
+    acceptOffer: async () => ({ type: 'answer', sdp: 'v=0\r\n' }) }, async server => {
+    const info = await (await fetch(`${server.origin}/api/info`)).json();
+    assert.equal(info.auth, 'local');
+    assert.equal(info.whip, '/whip');
+    assert.equal(server.connectionUrl, `${server.origin}/sender`);
+    const accepted = await fetch(`${server.origin}/api/offer`, { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(offer) });
+    assert.equal(accepted.status, 200);
+    assert.equal((await fetch(`${server.origin}/api/offer`, { method: 'POST',
+      headers: { origin: server.origin, 'content-type': 'application/json' }, body: JSON.stringify(offer) })).status, 200);
+    assert.equal((await fetch(`${server.origin}/api/offer`, { method: 'POST',
+      headers: { origin: 'http://evil.example', 'content-type': 'application/json' }, body: JSON.stringify(offer) })).status, 403);
+  });
+  await withServer({ localSubnet: { address: '10.42.0.1', prefixLength: 24 } }, async server => {
+    assert.equal((await fetch(`${server.origin}/whip`)).status, 401);
+  });
+});
+
+test('requireToken rejects tokenless local signaling and exposes bearer mode', async () => {
+  await withServer({ localSubnet: { address: '127.0.0.1', prefixLength: 8 }, requireToken: true,
+    acceptOffer: async () => ({ type: 'answer', sdp: 'v=0\r\n' }) }, async server => {
+    assert.equal(server.auth, 'bearer');
+    assert.equal(server.connectionUrl, `${server.origin}/sender#token=${server.token}`);
+    assert.equal((await (await fetch(`${server.origin}/api/info`)).json()).auth, 'bearer');
+    assert.equal((await fetch(`${server.origin}/api/offer`, { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(offer) })).status, 401);
+    assert.equal((await postOffer(server)).status, 200);
+  });
+});
+
 test('rejects unsupported methods, content types, malformed descriptions, and oversized bodies', async () => {
   await withServer({ acceptOffer: async () => ({ type: 'answer', sdp: 'v=0' }) }, async server => {
     assert.equal((await fetch(`${server.origin}/api/offer`, { method: 'GET' })).status, 405);

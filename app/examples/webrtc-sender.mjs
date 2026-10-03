@@ -12,7 +12,7 @@ const REQUEST_TIMEOUT_MS = 22000;
 const DELETE_TIMEOUT_MS = 2000;
 
 const token = new URLSearchParams(location.hash.slice(1)).get('token');
-const automaticMode = location.protocol === 'http:' && Boolean(token);
+const automaticMode = location.protocol === 'http:' || location.protocol === 'https:';
 if (token) history.replaceState(null, '', `${location.pathname}${location.search}`);
 
 let peer = null;
@@ -30,7 +30,7 @@ let activeRemoteSession = null;
 let signalingQueue = Promise.resolve();
 
 if (automaticMode) {
-  $('intro').textContent = 'This link contains a short-lived connection key. Press Start to connect automatically. The moving video and generated audio are sent only to the receiver.';
+  $('intro').textContent = 'Press Start to connect automatically. The moving video and generated audio are sent only to the receiver.';
   connectButton.hidden = true;
   $('offer-heading').hidden = true;
   $('answer-heading').hidden = true;
@@ -110,7 +110,7 @@ async function requestWithDeadline(path, options, timeoutMs) {
 }
 
 function authorizationHeaders() {
-  return {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'};
+  return {...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json'};
 }
 
 function releaseLocal() {

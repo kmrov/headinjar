@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { createServer as createSecureServer } from 'node:https';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { BlockList, isIP } from 'node:net';
 import { normalizeWhipSdp } from './whip-sdp.mjs';
 
 export const MAX_SIGNALING_BODY_BYTES = 512 * 1024;
@@ -42,6 +43,8 @@ export async function startSignalingServer({
   offerTimeoutMs = SIGNALING_OFFER_TIMEOUT_MS,
   bodyTimeoutMs = SIGNALING_BODY_TIMEOUT_MS,
   tls,
+  localSubnet,
+  requireToken = false,
 } = {}) {
   if (typeof host !== 'string' || !host || !Number.isInteger(port) || port < 0 || port > 65535) {
     throw new TypeError('Invalid signaling bind address');
@@ -49,6 +52,7 @@ export async function startSignalingServer({
   if (typeof acceptOffer !== 'function' || typeof isBusy !== 'function' || typeof disconnect !== 'function') {
     throw new TypeError('Signaling callbacks must be functions');
   }
+  if (typeof requireToken !== 'boolean') throw new TypeError('requireToken must be a boolean');
   const allowedAssets = validateAssets(assets);
   const secure = tls !== undefined;
   if (secure && (!tls || !tls.cert || !tls.key || (typeof tls.cert !== 'string' && !Buffer.isBuffer(tls.cert))
@@ -56,6 +60,14 @@ export async function startSignalingServer({
     throw new TypeError('TLS requires PEM certificate and private key');
   }
   const token = randomBytes(32).toString('hex');
+  let localPeers = null;
+  if (localSubnet !== undefined) {
+    if (!localSubnet || isIP(localSubnet.address) !== 4 || !Number.isInteger(localSubnet.prefixLength)
+      || localSubnet.prefixLength < 8 || localSubnet.prefixLength > 32) throw new TypeError('Invalid local subnet');
+    localPeers = new BlockList();
+    localPeers.addSubnet(localSubnet.address, localSubnet.prefixLength, 'ipv4');
+  }
+  const auth = requireToken || !localPeers ? 'bearer' : 'local';
   const server = secure ? createSecureServer({ cert: tls.cert, key: tls.key }) : createServer();
   server.on('error', () => {});
   server.headersTimeout = Math.max(1_000, Math.min(bodyTimeoutMs + 1_000, 10_000));
@@ -133,12 +145,12 @@ export async function startSignalingServer({
         return response.end();
       }
       if (request.method === 'GET') {
-        if (!hasValidBearer(request, token)) return reject(401);
+        if (!authorized(request)) return reject(401);
         response.writeHead(204, { 'content-length': 0 });
         return response.end();
       }
       if (request.method === 'POST') {
-        if (!hasValidBearer(request, token)) return reject(401);
+        if (!authorized(request)) return reject(401);
         return handleWhipOffer(request, response);
       }
       response.setHeader('allow', 'GET, POST, OPTIONS');
@@ -153,7 +165,7 @@ export async function startSignalingServer({
         response.writeHead(200, { 'content-length': 0 });
         return response.end();
       }
-      if (!hasValidBearer(request, token)) return reject(401);
+      if (!authorized(request)) return reject(401);
       if (request.method === 'GET') {
         if (currentLeaseKind !== 'whip' || currentLease !== whipSession[1]) return sendError(response, new HttpError(404), request);
         response.writeHead(204, { 'content-length': 0 });
@@ -167,16 +179,18 @@ export async function startSignalingServer({
 
     if (url.pathname === '/api/info') {
       if (request.method !== 'GET') return reject(405);
-      return sendJson(response, 200, { name: 'headinjar', protocol: 1 });
+      return sendJson(response, 200, localPeers
+        ? { name: 'headinjar', protocol: 1, auth, whip: '/whip', busy: Boolean(isBusy()) }
+        : { name: 'headinjar', protocol: 1 });
     }
     if (url.pathname === '/api/offer') {
       if (request.method !== 'POST') return reject(405);
-      if (!hasValidBearer(request, token)) return reject(401);
+      if (!authorized(request)) return reject(401);
       return handleOffer(request, response);
     }
     if (url.pathname === '/api/session') {
       if (request.method !== 'DELETE') return reject(405);
-      if (!hasValidBearer(request, token)) return reject(401);
+      if (!authorized(request)) return reject(401);
       return handleDisconnect(request, response);
     }
     if (url.pathname === '/sender' || url.pathname === '/webrtc-sender.mjs') {
@@ -191,6 +205,12 @@ export async function startSignalingServer({
       return;
     }
     return reject(404);
+  }
+
+  function authorized(request) {
+    return hasValidBearer(request, token) || Boolean(auth === 'local' && localPeers
+      && (request.headers.origin === undefined || request.headers.origin === origin)
+      && localPeers.check(request.socket.remoteAddress || '', 'ipv4'));
   }
 
   function handleOffer(request, response) {
@@ -385,7 +405,8 @@ export async function startSignalingServer({
     return closePromise;
   }
 
-  return Object.freeze({ origin, token, whipUrl: `${origin}/whip`, connectionUrl: `${origin}/sender#token=${token}`, close });
+  return Object.freeze({ origin, token, auth, whipUrl: `${origin}/whip`,
+    connectionUrl: auth === 'local' ? `${origin}/sender` : `${origin}/sender#token=${token}`, close });
 }
 
 function validateAssets(assets) {

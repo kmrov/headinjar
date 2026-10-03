@@ -63,6 +63,9 @@
               <video id="webrtc-video" autoplay playsinline muted aria-hidden="true" hidden></video>
               <p class="webrtc-status" id="webrtc-panel-status" role="status" aria-live="polite">Disconnected. Select WebRTC to connect.</p>
               <div class="signaling-controls">
+                <label class="webrtc-source-label" for="signaling-interface">Connection access</label>
+                <select class="source-kind-select" id="signaling-interface"><option value="127.0.0.1">This computer</option></select>
+                <label class="signaling-token-setting"><input id="signaling-require-token" type="checkbox">Require token</label>
                 <button class="button button-secondary rail-action" id="signaling-start" type="button">Start connection server</button>
                 <label class="webrtc-source-label" for="signaling-url">Browser sender link</label>
                 <input id="signaling-url" type="text" readonly aria-label="WebRTC connection link" placeholder="Start the server to create a local connection link">
@@ -70,14 +73,14 @@
                   <button class="text-button" id="signaling-copy" type="button" disabled>Copy link</button>
                   <button class="text-button" id="signaling-stop" type="button" disabled>Stop server</button>
                 </div>
-                <p class="webrtc-limit-note">The connection server is bound to localhost. Share this link only with the intended sender.</p>
+                <p class="webrtc-limit-note" id="signaling-access-note">This computer can connect without a token. Other computers cannot reach the loopback address.</p>
                 <label class="webrtc-source-label whip-label" for="whip-url">WHIP sender endpoint</label>
                 <input id="whip-url" type="text" readonly aria-label="WHIP endpoint" placeholder="Start the server to create a WHIP endpoint">
                 <div class="signaling-actions">
                   <button class="text-button" id="whip-copy-url" type="button" disabled>Copy WHIP URL</button>
                   <button class="text-button" id="whip-copy-token" type="button" disabled>Copy Bearer token</button>
                 </div>
-                <details class="webrtc-whip-details"><summary>Advanced · WHIP requirements</summary><p class="webrtc-limit-note">WHIP senders must finish ICE gathering before POST. Use the copied token as <code>Authorization: Bearer …</code>.</p></details>
+                <details class="webrtc-whip-details"><summary>Advanced · WHIP requirements</summary><p class="webrtc-limit-note">WHIP senders must finish ICE gathering before POST. When Require token is enabled, send <code>Authorization: Bearer …</code> with the copied token.</p></details>
               </div>
               <details class="webrtc-manual">
                 <summary>Advanced · manual SDP diagnostics</summary>

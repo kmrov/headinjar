@@ -12,6 +12,8 @@ import { getProjectOutputImpact, isTrustedEditorSender, isValidDisplayId, isVali
 import { createWebRTCSessionController } from './webrtc-session.mjs';
 import { createSignalingOfferGate } from './signaling-integration.mjs';
 import { startSignalingServer } from './signaling-server.mjs';
+import { listLanInterfaces } from './local-network.mjs';
+import { startLanAnnouncement } from './lan-announcement.mjs';
 
 const editorUrl = new URL('../renderer/editor.html', import.meta.url).href;
 const appIcon = fileURLToPath(new URL('../build/icon.png', import.meta.url));
@@ -31,6 +33,8 @@ let signalingGate;
 let signalingServer;
 let signalingStarting = null;
 let signalingClosing = null;
+let signalingAnnouncement = null;
+let signalingLan = false;
 
 function sourceSnapshot() {
   const sessionSource = webRTCSession?.snapshot();
@@ -44,9 +48,12 @@ function sourceSnapshot() {
 }
 
 function signalingSnapshot() {
+  const lanInterfaces = listLanInterfaces();
   return signalingServer
-    ? { running: true, url: signalingServer.connectionUrl, origin: signalingServer.origin, whipUrl: signalingServer.whipUrl || null }
-    : { running: false, url: null, origin: null, whipUrl: null };
+    ? { running: true, url: signalingServer.connectionUrl, origin: signalingServer.origin,
+      whipUrl: signalingServer.whipUrl || null, lan: signalingLan,
+      requireToken: signalingServer.auth === 'bearer', lanInterfaces }
+    : { running: false, url: null, origin: null, whipUrl: null, lan: false, requireToken: false, lanInterfaces };
 }
 
 function signalingTlsOptions() {
@@ -99,16 +106,19 @@ async function stopSignaling() {
   const server = signalingServer;
   if (!server) return signalingSnapshot();
   signalingServer = null;
-  signalingClosing = Promise.resolve(server.close()).then(() => {
+  const announcement = signalingAnnouncement;
+  signalingAnnouncement = null;
+  signalingLan = false;
+  signalingClosing = Promise.all([Promise.resolve(server.close()), announcement?.close()]).then(() => {
     publish();
     return signalingSnapshot();
   }).finally(() => { signalingClosing = null; });
   return signalingClosing;
 }
 
-function startSignaling() {
+function startSignaling(host = '127.0.0.1', requireToken = false) {
   if (signalingStarting) return signalingStarting;
-  const starting = startSignalingInner();
+  const starting = startSignalingInner(host, requireToken);
   signalingStarting = starting;
   void starting.then(
     () => { if (signalingStarting === starting) signalingStarting = null; },
@@ -117,26 +127,38 @@ function startSignaling() {
   return starting;
 }
 
-async function startSignalingInner() {
+async function startSignalingInner(host, requireToken) {
   if (signalingClosing) await signalingClosing;
   if (signalingServer) return signalingSnapshot();
   if (webRTCSession.snapshot().kind !== 'webrtc') throw new Error('Select WebRTC as the source first.');
+  const lan = host === '127.0.0.1' ? null : listLanInterfaces().find(item => item.address === host);
+  if (host !== '127.0.0.1' && !lan) throw new Error('Select an available private LAN address.');
   const assets = new Map([
     ['/sender', { body: readFileSync(new URL('../examples/webrtc-sender.html', import.meta.url)), contentType: 'text/html; charset=utf-8' }],
     ['/webrtc-sender.mjs', { body: readFileSync(new URL('../examples/webrtc-sender.mjs', import.meta.url)), contentType: 'text/javascript; charset=utf-8' }],
   ]);
   const tls = signalingTlsOptions();
-  return startSignalingServer({
-    host: '127.0.0.1', port: signalingPort(), assets,
+  const server = await startSignalingServer({
+    host, port: signalingPort(), assets,
+    localSubnet: { address: host, prefixLength: lan?.prefixLength ?? 8 }, requireToken,
     ...(tls ? { tls } : {}),
     isBusy: () => signalingGate.isBusy(),
     acceptOffer: (offer, options) => signalingGate.acceptOffer(offer, options),
     disconnect: () => { webRTCSession.reset('Signaling session disconnected.'); },
-  }).then(server => {
-    signalingServer = server;
-    publish();
-    return signalingSnapshot();
   });
+  try {
+    if (lan) signalingAnnouncement = await startLanAnnouncement({
+      name: 'Head in Jar', address: host, port: Number(new URL(server.origin).port),
+      scheme: tls ? 'https' : 'http', auth: server.auth,
+    });
+  } catch (error) {
+    await server.close();
+    throw error;
+  }
+  signalingServer = server;
+  signalingLan = Boolean(lan);
+  publish();
+  return signalingSnapshot();
 }
 
 function publish() {
@@ -261,7 +283,7 @@ function registerIpc() {
   editorHandler('shell:webrtc-offer', offer => {
     return signalingGate.acceptOffer(offer);
   });
-  editorHandler('shell:signaling-start', () => startSignaling());
+  editorHandler('shell:signaling-start', (host, requireToken) => startSignaling(host, requireToken));
   editorHandler('shell:signaling-stop', () => stopSignaling());
   editorHandler('shell:signaling-copy-url', () => {
     if (!signalingServer || typeof signalingServer.origin !== 'string' || typeof signalingServer.connectionUrl !== 'string') {
@@ -272,7 +294,7 @@ function registerIpc() {
     catch { throw new Error('The signaling connection link is no longer available.'); }
     if (!['http:', 'https:'].includes(connectionUrl.protocol) || connectionUrl.origin !== signalingServer.origin
       || connectionUrl.pathname !== '/sender' || connectionUrl.search
-      || connectionUrl.hash !== `#token=${signalingServer.token}` || !/^[a-f0-9]{64}$/.test(signalingServer.token)) {
+      || connectionUrl.hash !== (signalingServer.auth === 'bearer' ? `#token=${signalingServer.token}` : '')) {
       throw new Error('The signaling connection link is no longer available.');
     }
     clipboard.writeText(signalingServer.connectionUrl);

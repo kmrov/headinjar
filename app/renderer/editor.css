@@ -130,6 +130,8 @@ body.is-resizing-panels { user-select: none; cursor: col-resize; }
 .webrtc-disconnect { align-self: flex-start; }
 .signaling-controls { display: flex; flex-direction: column; gap: 7px; }
 .signaling-controls input { box-sizing: border-box; width: 100%; padding: 8px; color: #b8c8be; border: 1px solid #38413d; border-radius: 4px; background: #111514; font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.signaling-token-setting { display: flex; align-items: center; gap: 8px; color: #b4c0b8; font-size: 11px; }
+.signaling-controls .signaling-token-setting input { width: auto; margin: 0; padding: 0; accent-color: #9fc9aa; }
 .whip-label { padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--border-soft); }
 .webrtc-whip-details summary { color: #aeb9b3; font-size: 10px; cursor: pointer; }
 .webrtc-whip-details p { margin-top: 8px; }

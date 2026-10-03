@@ -15,6 +15,35 @@ const offerSdp = [
 ].join('\r\n');
 const answerSdp = offerSdp.replaceAll('a=sendonly', 'a=recvonly');
 
+test('native sender on the allowed local subnet can create and delete a WHIP session without a token', async t => {
+  const server = await startSignalingServer({ port: 0,
+    localSubnet: { address: '127.0.0.1', prefixLength: 8 },
+    acceptOffer: async () => ({ type: 'answer', sdp: answerSdp }) });
+  t.after(() => server.close());
+  const response = await fetch(server.whipUrl, { method: 'POST',
+    headers: { 'content-type': 'application/sdp' }, body: offerSdp });
+  assert.equal(response.status, 201);
+  const location = response.headers.get('location');
+  assert.equal((await fetch(`${server.origin}${location}`, { method: 'DELETE' })).status, 204);
+  assert.equal((await fetch(server.whipUrl, { method: 'POST',
+    headers: { origin: 'http://other.example', 'content-type': 'application/sdp' }, body: offerSdp })).status, 401);
+});
+
+test('requireToken protects local WHIP creation and lease deletion', async t => {
+  const server = await startSignalingServer({ port: 0,
+    localSubnet: { address: '127.0.0.1', prefixLength: 8 }, requireToken: true,
+    acceptOffer: async () => ({ type: 'answer', sdp: answerSdp }) });
+  t.after(() => server.close());
+  const headers = { authorization: `Bearer ${server.token}`, 'content-type': 'application/sdp' };
+  assert.equal((await fetch(server.whipUrl, { method: 'POST',
+    headers: { 'content-type': 'application/sdp' }, body: offerSdp })).status, 401);
+  const response = await fetch(server.whipUrl, { method: 'POST', headers, body: offerSdp });
+  assert.equal(response.status, 201);
+  const location = response.headers.get('location');
+  assert.equal((await fetch(`${server.origin}${location}`, { method: 'DELETE' })).status, 401);
+  assert.equal((await fetch(`${server.origin}${location}`, { method: 'DELETE', headers })).status, 204);
+});
+
 test('WHIP POST returns complete SDP with a lease URL; GET, OPTIONS, DELETE and stale leases follow the resource contract', async t => {
   let disconnects = 0;
   const server = await startSignalingServer({ port: 0, acceptOffer: async offer => {

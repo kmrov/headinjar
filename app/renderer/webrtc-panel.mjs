@@ -9,6 +9,9 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
   const connect = $('#webrtc-connect');
   const disconnect = $('#webrtc-disconnect');
   const signalingStart = $('#signaling-start');
+  const signalingInterface = $('#signaling-interface');
+  const signalingRequireToken = $('#signaling-require-token');
+  const signalingAccessNote = $('#signaling-access-note');
   const signalingUrl = $('#signaling-url');
   const signalingCopy = $('#signaling-copy');
   const signalingStop = $('#signaling-stop');
@@ -16,7 +19,9 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
   const whipCopyUrl = $('#whip-copy-url');
   const whipCopyToken = $('#whip-copy-token');
 
-  signalingStart.addEventListener('click', () => run(() => desktop.startSignaling()));
+  signalingStart.addEventListener('click', () => run(() => desktop.startSignaling(signalingInterface.value, signalingRequireToken.checked)));
+  signalingInterface.addEventListener('change', () => render());
+  signalingRequireToken.addEventListener('change', () => render());
   signalingStop.addEventListener('click', () => run(() => desktop.stopSignaling()));
   signalingCopy.addEventListener('click', () => run(() => desktop.copySignalingUrl()));
   whipCopyUrl.addEventListener('click', () => run(() => desktop.copyWhipUrl()));
@@ -59,6 +64,23 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
     offer.disabled = current.kind !== 'webrtc';
     answer.readOnly = true;
     const signaling = snapshot?.signaling || { running: false, url: null };
+    const selectedHost = signalingInterface.value || '127.0.0.1';
+    const choices = [{ address: '127.0.0.1', name: 'This computer' },
+      ...(signaling.lanInterfaces || []).map(item => ({ address: item.address, name: `${item.name} · ${item.address} · local network` }))];
+    signalingInterface.innerHTML = choices.map(item => `<option value="${item.address}">${item.name.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}</option>`).join('');
+    signalingInterface.value = choices.some(item => item.address === selectedHost) ? selectedHost : '127.0.0.1';
+    signalingInterface.disabled = signaling.running || current.kind !== 'webrtc';
+    if (signaling.running) signalingRequireToken.checked = Boolean(signaling.requireToken);
+    signalingRequireToken.disabled = signaling.running || current.kind !== 'webrtc';
+    const tokenRequired = signaling.running ? Boolean(signaling.requireToken) : signalingRequireToken.checked;
+    const onLan = signaling.running ? signaling.lan : signalingInterface.value !== '127.0.0.1';
+    signalingAccessNote.textContent = onLan
+      ? tokenRequired
+        ? 'Advertised on the selected local network; token required for every connection.'
+        : 'Advertised on the selected local network. Native clients on that network can connect without a token.'
+      : tokenRequired
+        ? 'This computer can connect with a token; token required for every connection. Other computers cannot reach the loopback address.'
+        : 'This computer can connect without a token. Other computers cannot reach the loopback address.';
     signalingStart.disabled = current.kind !== 'webrtc' || signaling.running;
     signalingStart.textContent = signaling.running ? 'Connection server running' : 'Start connection server';
     signalingUrl.value = signaling.url || '';

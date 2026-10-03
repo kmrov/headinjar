@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   acceptWebRTCOffer: (offer) => ipcRenderer.invoke('shell:webrtc-offer', offer),
   answerWebRTC: (payload) => ipcRenderer.send('shell:webrtc-answer', payload),
   reportWebRTCStatus: (payload) => ipcRenderer.send('shell:webrtc-status', payload),
-  startSignaling: () => ipcRenderer.invoke('shell:signaling-start'),
+  startSignaling: (host, requireToken) => ipcRenderer.invoke('shell:signaling-start', host, requireToken),
   stopSignaling: () => ipcRenderer.invoke('shell:signaling-stop'),
   copySignalingUrl: () => ipcRenderer.invoke('shell:signaling-copy-url'),
   copyWhipUrl: () => ipcRenderer.invoke('shell:whip-copy-url'),
