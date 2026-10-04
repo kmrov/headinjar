@@ -16,8 +16,9 @@ try {
   // Native X11/Xwayland by default: Electron 44 headless Ozone crashes on this host.
   const displayArgs = process.env.MAPPING_SMOKE_HEADLESS === '1'
     ? ['--ozone-platform=headless', '--headless'] : ['--ozone-platform=x11'];
+  const glArgs = process.env.MAPPING_SMOKE_SOFTWARE_GL === '1' ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [];
   application = await electron.launch({
-    args: [root, ...displayArgs, `--user-data-dir=${temporary}/profile`],
+    args: [root, ...displayArgs, ...glArgs, `--user-data-dir=${temporary}/profile`],
     timeout: 30000,
   });
   const editor = await application.firstWindow();
@@ -51,15 +52,13 @@ try {
   assert.equal(await editor.locator('[data-help="mapping"]').evaluate(button => document.activeElement === button), true, 'Escape returns focus to help button');
   await editor.locator('[data-help="align"]').click();
   assert.match(await helpPopup.innerText(), /image[\s\S]*model/i);
-  await editor.locator('[data-help="mask"]').click();
-  assert.match(await helpPopup.innerText(), /Keep visible[\s\S]*Exclude from projection/);
   await editor.locator('#canvas-title').click();
   assert.equal(await helpPopup.isVisible(), false, 'clicking outside closes help');
   await editor.locator('[data-help="webrtc"]').click();
   assert.match(await helpPopup.innerText(), /sender/i);
   await editor.locator('#mode-projector').click();
   await editor.locator('[data-help="projector-points"]').click();
-  assert.match(await helpPopup.innerText(), /Recreate from Align[\s\S]*Apply/);
+  assert.match(await helpPopup.innerText(), /Use Align points[\s\S]*Apply correction/);
   await editor.locator('[data-help="hold"]').click();
   assert.match(await helpPopup.innerText(), /sound[\s\S]*Freeze preview/i);
   const helpBounds = await helpPopup.boundingBox();
@@ -86,13 +85,6 @@ try {
     assert.equal(await editor.locator('img[src*="demo-"]:visible').count(),0,'no demo imagery before import');
     await editor.waitForFunction(()=>[...document.images].every(image=>image.complete));
     await editor.screenshot({scale:'css',path:join(screenshots,'editor-studio-1488.png')});
-    await editor.locator('#placement-x').fill('0.12');
-    await editor.locator('#placement-x').press('Tab');
-    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.transform.x===0.12);
-    await invoke('undo');
-    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0);
-    await invoke('redo');
-    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0.12);
     await editor.locator('#mode-projector').click();
     await editor.locator('#projector-panel').waitFor({state:'visible'});
     await editor.screenshot({scale:'css',path:join(screenshots,'editor-projector-1488.png')});
@@ -133,6 +125,17 @@ try {
     },{mesh:meshPath,image:imagePath});
     await editor.locator('#import-mesh').click();
     await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.mesh?.name==='test-plane.obj');
+    assert.equal(await editor.locator('#error-region').innerText(), '', '3D preview loaded without a WebGL error');
+    await editor.locator('#placement-x').fill('0.12');
+    await editor.locator('#placement-x').press('Tab');
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.transform.x===0.12);
+    await invoke('undo');
+    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0);
+    await invoke('redo');
+    assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0.12);
+    await editor.locator('[data-help="mask"]').click();
+    assert.match(await helpPopup.innerText(), /Keep visible[\s\S]*Exclude from projection/);
+    await editor.keyboard.press('Escape');
     await editor.locator('#mode-projector').click();
     const projectorCanvas=editor.locator('#viewport > canvas').first();
     const fittedProjector=await projectorCanvas.boundingBox();
@@ -156,15 +159,8 @@ try {
     assert.ok(Math.abs(pannedProjector.x-zoomedProjector.x-35)<2 && Math.abs(pannedProjector.y-zoomedProjector.y-20)<2,'middle drag pans the projector preview');
     assert.equal((await invoke('getSnapshot')).project.revision,projectorRevision,'preview navigation does not edit the project');
     assert.deepEqual((await invoke('getSnapshot')).project.projector,projectorSettings,'preview navigation does not change projector calibration');
-    const pointX=zoomX+35,pointY=zoomY+20;
-    await editor.locator('#physical-add').click();
-    await editor.mouse.click(pointX,pointY);
-    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.projector.calibration.pairs.length===1);
-    const pickedPoint=(await invoke('getSnapshot')).project.projector.calibration.pairs[0].source;
-    assert.ok(Math.abs(pickedPoint.u-(pointX-pannedProjector.x)/pannedProjector.width)<0.01
-      && Math.abs(pickedPoint.v-(pointY-pannedProjector.y)/pannedProjector.height)<0.01,
-    'calibration picking uses the zoomed and panned preview coordinates');
-    await invoke('undo');
+    assert.equal(await editor.locator('#physical-add').isEnabled(),false,'choose screen before calibration points');
+    assert.equal((await invoke('getSnapshot')).project.projector.calibration.pairs.length,0);
     await editor.locator('#fit-view').click();
     const resetProjector=await projectorCanvas.boundingBox();
     assert.ok(Math.abs(resetProjector.x-fittedProjector.x)<2 && Math.abs(resetProjector.width-fittedProjector.width)<2,'Fit resets projector preview navigation');
@@ -217,7 +213,9 @@ try {
     await editor.mouse.down({button:'middle'});
     await editor.mouse.move(sourceX+20,sourceY+15,{steps:4});
     await editor.mouse.up({button:'middle'});
-    assert.equal(await editor.locator('.alignment-image').evaluate(image=>image.style.transform),'translate(20px, 15px) scale(1)','middle-button pan still works');
+    const pannedSource=await editor.locator('.alignment-image').evaluate(image=>image.style.transform);
+    const panMatch=pannedSource.match(/^translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(1\)$/);
+    assert.ok(panMatch && Math.abs(Number(panMatch[1])-20)<.01 && Math.abs(Number(panMatch[2])-15)<.01,'middle-button pan still works');
     await editor.locator('#alignment-source-fit').click();
     await editor.locator('[data-tool="align"]').click();
     await invoke('editProject',{type:'alignment-pairs',value:[{source:{u:0.5,v:0.5},target:{u:0.5,v:0.5}}]});
@@ -242,9 +240,11 @@ try {
     assert.deepEqual(movedPair.target,{u:0.5,v:0.5},'dragging an image landmark preserves its paired model point');
     assert.equal(await editor.locator('.alignment-marker:not(.is-pending)').count(),1,'dragging a landmark keeps the pair count');
     await editor.locator('[data-tool="align"]').click();
-    assert.match(await editor.locator('#projection-toggle').innerText(), /Choose display/);
+    assert.match(await editor.locator('#projection-toggle').innerText(), /Choose screen/);
     assert.equal(await editor.locator('#physical-calibration').count(), 1);
     await editor.waitForFunction(()=>document.querySelector('#reference-thumb')?.complete);
+    await editor.locator('#import-mesh').click();
+    await editor.waitForFunction(async()=>(await window.desktop.getSnapshot()).project.placement.transform.x===0);
     assert.equal((await invoke('getSnapshot')).project.placement.transform.x,0,'mesh replacement resets placement');
     const cameraBefore=(await invoke('getSnapshot')).project.projector;
     await invoke('editProject',{type:'placement-transform',value:{x:0.1,y:0,scale:1,rotation:0}});

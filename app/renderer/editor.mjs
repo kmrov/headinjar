@@ -13,6 +13,7 @@ import { createWebRTCReceiver } from './webrtc-receiver.mjs';
 import { createFramePublisher } from './media-frame-channel.mjs';
 import { createWorkspaceLayout } from './workspace-layout.mjs';
 import { createContextHelp } from './context-help.mjs';
+import { nextWorkflowStep } from './workflow-guide.mjs';
 
 const desktop = window.desktop;
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -37,6 +38,7 @@ const ui = {
   webrtcPreviewCanvas: $('#webrtc-preview-canvas'),
   webrtcPreviewFreeze: $('#webrtc-preview-freeze'),
   webrtcVideo: $('#webrtc-video'),
+  workflow: $('#workflow-guide'), workflowTitle: $('#workflow-title'), workflowDetail: $('#workflow-detail'), workflowAction: $('#workflow-action'),
 };
 
 const workspaceLayout = createWorkspaceLayout({
@@ -237,9 +239,11 @@ function setMode(mode) {
   $('#fit-view').setAttribute('aria-label',projector?'Fit projector preview to view':'Fit model to view');
   $('.status-meta').hidden = projector;
   $$('.tool-switch').forEach((toolbar) => { toolbar.hidden = projector; });
+  $('.workspace').classList.toggle('is-aligning', !projector && activeTool === 'align');
   if (viewportApi) {viewportApi.setMode(activeMode);viewportApi.setTextureOpacity(!projector&&activeTool==='align'?Number($('#texture-opacity').value):1);}
   physicalCalibration?.setVisible(projector);
   renderAlignment();
+  renderWorkflow();
 }
 
 function setTool(tool) {
@@ -265,7 +269,9 @@ function setTool(tool) {
   ui.maskPanel.hidden = activeMode === 'projector' || activeTool === 'align';
   ui.surfacePanel.hidden = activeMode === 'projector' || mappingMode !== 'surface';
   if (activeTool === 'align' && mappingMode === 'front') viewportApi?.fit();
+  $('.workspace').classList.toggle('is-aligning', activeMode === 'placement' && activeTool === 'align');
   renderAlignment();
+  renderWorkflow();
 }
 
 function updateSavedState(project) {
@@ -284,10 +290,11 @@ function renderProject(project) {
   $('#redo-project').disabled = !snapshot?.canRedo;
 
   const mesh = project.mesh;
+  $('#inspector-setup').hidden = Boolean(mesh);
   ui.modelRow.hidden = !mesh;
   ui.modelName.textContent = mesh?.name || '';
   ui.modelName.title = mesh?.name || '';
-  ui.modelAction.textContent = mesh ? 'Replace OBJ' : 'Import OBJ';
+  ui.modelAction.textContent = mesh ? 'Replace 3D model' : 'Choose 3D model (.obj)';
 
   const reference = project.reference;
   ui.referenceRow.hidden = !reference;
@@ -298,7 +305,7 @@ function renderProject(project) {
   ui.referenceState.textContent = referenceLabels[referenceStatus] || 'Unknown';
   ui.referenceState.hidden = ['ready', 'none'].includes(referenceStatus);
   ui.referenceState.classList.toggle('is-error', ['missing', 'error'].includes(referenceStatus));
-  ui.referenceAction.textContent = reference ? 'Replace image' : 'Add reference image';
+  ui.referenceAction.textContent = reference ? 'Replace image' : 'Choose image';
   ui.referenceWarning.hidden = !reference || !['missing', 'error'].includes(referenceStatus);
   ui.referenceWarning.textContent = ui.referenceWarning.hidden ? ''
     : snapshot?.error || (referenceStatus === 'missing' ? 'The reference file is missing. Replace it to preview the image.' : 'The reference image could not be loaded.');
@@ -344,7 +351,9 @@ function renderOutput(state, source) {
   const mode = snapshot?.mode || (output.blackout || !output.armed ? 'black' : output.hold ? 'held' : 'live');
   const isBlackout = Boolean(output.blackout);
   const states = {
-    black: [isBlackout ? 'Blackout active' : 'Output black', output.armed ? 'Blackout is holding output black' : 'Projector not armed', 'black'],
+    black: isBlackout ? ['Blackout active', 'Projection is temporarily black', 'black']
+      : !snapshot?.displayId ? ['No screen selected', 'Choose an output screen to continue', 'black']
+        : ['Projection stopped', outputReady(output) ? 'Ready to start projection' : 'Waiting for content or output screen', 'black'],
     held: ['Frame held', 'Output holding the last frame', 'held'],
     live: ['Output live', 'Projection is running', 'live'],
   };
@@ -356,7 +365,7 @@ function renderOutput(state, source) {
   const needsDisplay = !snapshot?.displayId;
   ui.changeDisplay.hidden = needsDisplay;
   ui.projectionToggle.disabled = !needsDisplay && !output.armed && !ready;
-  const projectionLabel = needsDisplay ? 'Choose display' : output.armed ? 'Stop projection' : 'Start projection';
+  const projectionLabel = needsDisplay ? 'Choose screen' : output.armed ? 'Stop projection' : 'Start projection';
   const projectionIcon = needsDisplay ? 'ph-monitor' : output.armed ? 'ph-stop' : 'ph-play';
   ui.projectionToggle.innerHTML = `<i class="ph ${projectionIcon}" aria-hidden="true"></i>${projectionLabel}`;
   ui.projectionToggle.title = ui.projectionToggle.disabled ? 'Connect a running source before starting projection' : projectionLabel;
@@ -368,6 +377,37 @@ function renderOutput(state, source) {
   const presented = Number.isFinite(output.presentedFps) ? `${output.presentedFps.toFixed(1)} fps` : '— fps';
   $('#incoming-fps').textContent = incoming;
   $('#presented-fps').textContent = presented;
+}
+
+function renderWorkflow() {
+  const step = nextWorkflowStep(snapshot, activeMode);
+  ui.workflow.hidden = !step;
+  if (!step) return;
+  ui.workflow.dataset.step = step.id;
+  ui.workflowTitle.textContent = step.title;
+  ui.workflowDetail.textContent = step.detail;
+  ui.workflowAction.textContent = step.action;
+  $('#workflow-path').hidden = step.id !== 'model';
+  ui.workflowAction.hidden = step.id === 'align' && activeMode === 'placement' && activeTool === 'align';
+  ui.workflowAction.disabled = step.id === 'projection' && !outputReady(snapshot?.output);
+  $('#open-example').hidden = step.id !== 'model';
+}
+
+function runWorkflowAction() {
+  const step = nextWorkflowStep(snapshot, activeMode);
+  if (!step) return;
+  if (step.id === 'model') return importFile('importMesh');
+  if (step.id === 'source') return importFile('importReference');
+  if (step.id === 'connect') {
+    if ($('#sources-panel').hidden) ui.showToggle.click();
+    $('#signaling-start').scrollIntoView({ block: 'center' });
+    $('#signaling-start').focus();
+    return;
+  }
+  if (step.id === 'align') { setMode('placement'); setTool('align'); return; }
+  if (step.id === 'display') { setMode('projector'); return openDisplayDialog(); }
+  if (step.id === 'physical-points') return $('#physical-reseed').disabled ? $('#physical-add').click() : $('#physical-reseed').click();
+  if (step.id === 'projection' && outputReady(snapshot?.output)) return ui.projectionToggle.click();
 }
 
 function renderSnapshot(next) {
@@ -387,6 +427,7 @@ function renderSnapshot(next) {
   physicalCalibration?.render(snapshot);
   webrtcPanel?.render(snapshot);
   renderOutput(snapshot.output, snapshot.source);
+  renderWorkflow();
   if (snapshot.error && snapshot.error !== lastSnapshotError) reportError(new Error(snapshot.error));
   lastSnapshotError = snapshot.error || null;
   const currentDisplay = snapshot.displayId || snapshot.project?.output?.displayId;
@@ -505,6 +546,17 @@ async function openProject() {
   });
 }
 
+async function openExample() {
+  if (snapshot?.dirty && (snapshot.project?.mesh || snapshot.project?.reference)
+    && !window.confirm('Open the practice scene and replace the current unsaved project?')) return;
+  await safely(async () => {
+    await callDesktop('openExample');
+    setMode('placement');
+    setTool(null);
+    showFeedback('Practice scene opened. Match points on the image and model to begin.');
+  });
+}
+
 async function newProject() {
   const name = window.prompt('Name your project', 'Untitled project');
   if (name === null) return;
@@ -579,12 +631,14 @@ async function confirmDisplay() {
     const selected = displays.find((display) => String(display.id) === displayId);
     await callDesktop('openOutput', displayId, selected.physicalSize);
     ui.displayDialog.close();
-    showFeedback('Output opened black. Click Start projection when ready.');
+    showFeedback('Screen connected. It stays black until you start projection.');
   });
   ui.confirmDisplay.disabled = false;
 }
 
 function bindEvents() {
+  ui.workflowAction.addEventListener('click', runWorkflowAction);
+  $('#open-example').addEventListener('click', openExample);
   $('#new-project').addEventListener('click', newProject);
   $('#open-project').addEventListener('click', openProject);
   $('#save-project').addEventListener('click', saveProject);
@@ -812,6 +866,8 @@ window.addEventListener('beforeunload', () => {
 
 function renderWebRTCPreviewState(state = editorWebRTCSource?.getState()) {
   if (!state) return;
+  $('.webrtc-preview-window').hidden = !state.hasFrame;
+  $('.webrtc-preview-controls').hidden = !state.hasFrame;
   ui.webrtcPreviewFreeze.disabled = !state.canFreeze;
   ui.webrtcPreviewFreeze.setAttribute('aria-pressed', String(state.frozen));
   ui.webrtcPreviewFreeze.textContent = state.frozen ? 'Follow live preview' : 'Freeze preview';

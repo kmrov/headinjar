@@ -15,6 +15,7 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
   const signalingUrl = $('#signaling-url');
   const signalingCopy = $('#signaling-copy');
   const signalingStop = $('#signaling-stop');
+  const senderStep = $('#sender-link-step');
   const whipUrl = $('#whip-url');
   const whipCopyUrl = $('#whip-copy-url');
   const whipCopyToken = $('#whip-copy-token');
@@ -82,8 +83,9 @@ export function createWebRTCPanel(root, { desktop, run, getSnapshot, isReceiverR
         ? 'This computer can connect with a token; token required for every connection. Other computers cannot reach the loopback address.'
         : 'This computer can connect without a token. Other computers cannot reach the loopback address.';
     signalingStart.disabled = current.kind !== 'webrtc' || signaling.running;
-    signalingStart.textContent = signaling.running ? 'Connection server running' : 'Start connection server';
+    signalingStart.textContent = signaling.running ? 'Receiving is ready' : 'Start receiving video';
     signalingUrl.value = signaling.url || '';
+    senderStep.hidden = !signaling.running;
     signalingCopy.disabled = !signaling.running || !signaling.url;
     signalingStop.disabled = !signaling.running;
     whipUrl.value = signaling.whipUrl || '';

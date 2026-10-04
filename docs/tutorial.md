@@ -1,6 +1,6 @@
 # Head in Jar: First projection mapping project
 
-This walkthrough takes you from a new project to a saved, manually calibrated projection. It uses your own OBJ and reference image; the repository does not include models or sample textures.
+This walkthrough takes you from a new project to a saved, manually calibrated projection. You can use your own OBJ and image, or click **Open practice scene** on the first screen to try point alignment with the bundled illustrated face.
 
 ## Before you start
 
@@ -23,7 +23,7 @@ The screenshots use a local model and texture to demonstrate the workflow. The f
 
 ## 1. Import your model and image
 
-Click **Import OBJ** and choose your model. Under **Source**, set **Source type** to **Reference image**, then click **Add reference image** and choose a still image. The image appears in the editor preview and gives you a source to align.
+Click **Choose 3D model (.obj)** and choose your model. Under **Source**, set **Content to project** to **Image**, then click **Choose image** and choose a still image. The image appears in the editor preview and gives you a source to align. The practice scene already includes both files.
 
 Keep the reference image at its current path while you work. The project stores a reference to that external file, so moving or deleting it can make it unavailable when you reopen the project.
 
@@ -33,7 +33,7 @@ In the toolbar, keep **Image placement** selected and set **Mapping** to **Front
 
 To put one image or live video on another side, choose **Surface**. Orbit the model with **Move**, choose **Place image**, then click or drag on the visible surface. The center handle shows the saved location; the Surface inspector adjusts scale and rotation. Switching back to Front preserves its own alignment settings. A new OBJ clears the Surface location because its coordinates refer to the old model.
 
-For a more accurate fit, choose **Align**. Click a recognizable point on the source image, then the matching point on the model. Add at least three points that are not in a straight line; eyes, nose, mouth corners, and chin are useful face landmarks. The editor automatically calculates a 17 × 17 control grid when the pairs form a valid fit. **Reapply alignment** recalculates it after later changes to the image placement.
+For a more accurate fit, choose **Align**. Click a recognizable point on the source image, then the matching point on the model. Add at least three points that are not in a straight line; eyes, nose, mouth corners, and chin are useful face landmarks. The editor automatically calculates a 17 × 17 control grid when the pairs form a valid fit. **Recalculate from points** restores it after later changes to the image placement.
 
 ![Align tool with paired image and model landmarks](tutorial/assets/alignment-points.png)
 
@@ -47,11 +47,11 @@ A mask controls coverage; it does not align the projector with the physical obje
 
 ## 4. Calibrate the projector
 
-Choose **Projector calibration**. The visible landmarks from Image placement → Align appear automatically on the model. If there are no landmarks, click **Add point**, then click a recognizable place on the digital model. Add at least three points spread across the surface.
+Choose **Projector calibration**. Click **Choose screen** in the bottom bar, select the projector, and click **Connect screen**. Check that the selected display is the one connected to the projector. The output stays black. Opening this tab alone does not change the project.
 
-Click **Choose display** in the bottom bar, select the projector, and click **Open black output**. Check that the selected display is the one connected to the projector. When ready, click **Start projection** in the same place.
+Click **Use Align points** to copy visible landmarks from Image placement → Align, or click **Add point** and choose a place on the digital model. Add at least three points spread across the surface. When ready, click **Start projection** in the bottom bar. Choose the screen before adding points because a resolution change resets calibration.
 
-Select a numbered point. Match its projected cross on the real object by dragging the orange point in the preview. Repeat for the other points, then click **Apply**. To add another point, click **Add point** and pick its place on the digital model.
+Select a numbered point. Match its projected cross on the real object by dragging the orange point in the preview. Repeat for the other points, then click **Apply correction**. To add another point, click **Add point** and pick its place on the digital model.
 
 **Hold** freezes the current projected frame; click it again to continue. **Stop projection** turns the output black. **Freeze preview** holds only the editor preview and does not pause the projected output.
 

@@ -14,6 +14,7 @@ import { createSignalingOfferGate } from './signaling-integration.mjs';
 import { startSignalingServer } from './signaling-server.mjs';
 import { listLanInterfaces } from './local-network.mjs';
 import { startLanAnnouncement } from './lan-announcement.mjs';
+import { createExampleProject } from '../examples/face-example.mjs';
 
 const editorUrl = new URL('../renderer/editor.html', import.meta.url).href;
 const appIcon = fileURLToPath(new URL('../build/icon.png', import.meta.url));
@@ -409,11 +410,16 @@ function registerIpc() {
     const result = await projectController.openProject();
     return result.canceled ? result : { ...snapshot(), canceled: false, recovered: result.recovered, path: result.path };
   });
+  editorHandler('shell:open-example', async () => {
+    const example = createExampleProject({ id: randomUUID(), now: new Date().toISOString() });
+    await projectController.replaceProject(example);
+    return snapshot();
+  });
 }
 
 function createEditor() {
   editorWindow = new BrowserWindow({
-    width: 1440, height: 960, minWidth: 900, minHeight: 640, show: false, icon: appIcon,
+    width: 1440, height: 960, minWidth: 1180, minHeight: 760, show: false, icon: appIcon,
     webPreferences: {
       preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,

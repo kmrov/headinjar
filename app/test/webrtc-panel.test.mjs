@@ -14,7 +14,7 @@ function makeElement() {
 test('source choice shows the matching media controls and switches the project source', async () => {
   const ids = ['source-kind', 'reference-source-content', 'webrtc-panel', 'webrtc-panel-status',
     'webrtc-offer', 'webrtc-answer', 'webrtc-connect', 'webrtc-disconnect', 'signaling-start',
-    'signaling-interface', 'signaling-require-token', 'signaling-access-note', 'signaling-url', 'signaling-copy', 'signaling-stop', 'whip-url', 'whip-copy-url', 'whip-copy-token'];
+    'signaling-interface', 'signaling-require-token', 'signaling-access-note', 'signaling-url', 'signaling-copy', 'signaling-stop', 'sender-link-step', 'whip-url', 'whip-copy-url', 'whip-copy-token'];
   const elements = Object.fromEntries(ids.map(id => [id, makeElement()]));
   const root = { querySelector: selector => elements[selector.slice(1)] };
   let snapshot = { source: { kind: 'reference', status: 'running' }, signaling: { running: false } };
@@ -50,7 +50,7 @@ test('connection server forwards Require token and shows the active policy', asy
   const ids = ['source-kind', 'reference-source-content', 'webrtc-panel', 'webrtc-panel-status',
     'webrtc-offer', 'webrtc-answer', 'webrtc-connect', 'webrtc-disconnect', 'signaling-start',
     'signaling-interface', 'signaling-require-token', 'signaling-access-note', 'signaling-url',
-    'signaling-copy', 'signaling-stop', 'whip-url', 'whip-copy-url', 'whip-copy-token'];
+    'signaling-copy', 'signaling-stop', 'sender-link-step', 'whip-url', 'whip-copy-url', 'whip-copy-token'];
   const elements = Object.fromEntries(ids.map(id => [id, makeElement()]));
   const calls = [];
   const snapshot = { source: { kind: 'webrtc', status: 'disconnected' },
@@ -63,9 +63,11 @@ test('connection server forwards Require token and shows the active policy', asy
   elements['signaling-require-token'].checked = true;
   elements['signaling-require-token'].dispatch('change');
   assert.match(elements['signaling-access-note'].textContent, /token required/i);
+  assert.equal(elements['sender-link-step'].hidden, true);
   await elements['signaling-start'].dispatch('click');
   assert.deepEqual(calls, [['192.168.1.10', true]]);
   panel.render({ ...snapshot, signaling: { ...snapshot.signaling, running: true, lan: true, requireToken: true } });
   assert.equal(elements['signaling-require-token'].disabled, true);
+  assert.equal(elements['sender-link-step'].hidden, false);
   assert.match(elements['signaling-access-note'].textContent, /token required/i);
 });

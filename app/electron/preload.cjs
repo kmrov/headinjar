@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   newProject: (name) => ipcRenderer.invoke('shell:new-project', name),
   saveProject: () => ipcRenderer.invoke('shell:save-project'),
   openProject: () => ipcRenderer.invoke('shell:open-project'),
+  openExample: () => ipcRenderer.invoke('shell:open-example'),
   onWebRTCOffer(callback) {
     if (typeof callback !== 'function') throw new TypeError('callback must be a function');
     const listener = (_event, payload) => callback(payload);

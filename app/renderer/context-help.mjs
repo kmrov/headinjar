@@ -41,7 +41,7 @@ const HELP = {
     title: 'Points on the model',
     lines: [
       'Start projection and select a numbered point. Drag its orange mark in the preview until the projected crosshair matches that point on the real surface.',
-      'Recreate from Align replaces these points and the current correction with the image alignment points. Apply calculates the correction from at least three points.',
+      'Use Align points copies the visible image alignment points into projector calibration. Replace from Align replaces these points and the current correction. Apply correction uses at least three points.',
     ],
   },
   hold: {

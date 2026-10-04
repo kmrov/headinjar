@@ -43,8 +43,9 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
     const empty = root.querySelector('.alignment-empty');
     empty.hidden = showLive || (source?.kind !== 'webrtc' && Boolean(snapshot?.referencePreview));
     empty.textContent = source?.kind === 'webrtc'
-      ? 'Waiting for WebRTC video. The reference image stays hidden while WebRTC is selected.'
+      ? 'Connect video to place matching points.'
       : 'Add a reference image to align.';
+    markers.hidden = !showLive && (source?.kind === 'webrtc' || !snapshot?.referencePreview);
     root.querySelector('.alignment-source-heading strong').textContent = source?.kind === 'webrtc' ? 'Live video source' : 'Reference image';
   }
 
@@ -249,12 +250,19 @@ export function createAlignmentPanel(root, controlsRoot = document, { onSourcePo
         row.addEventListener('click', () => onSelect?.(index));
         list.append(row);
       });
-      const next = pending ? 'Click the matching point on the model.' : 'Click a point on the image, then the model.';
-      status.textContent = mode === 'uv' ? 'Switch to Front mapping to place landmarks.' : next;
+      const next = pending ? 'Click the matching point on the model.' : 'Click a point on the image, then the model. Wheel zooms the image.';
+      status.textContent = mode === 'uv' ? 'Switch to Front mapping to place landmarks.'
+        : markers.hidden ? 'Add an image or connect video to place points.' : next;
       root.classList.toggle('is-awaiting-target', pending);
       remove.disabled = selected === null || selected >= pairs.length;
       clear.disabled = pairs.length === 0;
       controlsRoot.querySelector('[data-alignment-apply]').disabled = pairs.length < 3;
+      const result = controlsRoot.querySelector('#alignment-result');
+      result.textContent = markers.hidden ? 'Add an image or connect video to place points.'
+        : pairs.length < 3 ? `Add ${3 - pairs.length} more ${3 - pairs.length === 1 ? 'point' : 'points'} across the face to fit the image.`
+        : (mode === 'wrap' ? snapshot?.project?.placement?.wrap?.grid : snapshot?.project?.placement?.grid)?.columns > 5
+          ? `Image fit updated automatically from ${pairs.length} points.`
+          : 'These points do not form a usable fit yet. Move or replace a point.';
       controlsRoot.querySelector('.alignment-count').textContent = `${pairs.length} / 12`;
       positionMarkers();
   }
